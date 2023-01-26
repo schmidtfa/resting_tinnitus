@@ -1,5 +1,6 @@
 import pyriemann
 from scipy.signal import savgol_filter
+import numpy as np
 
 def run_potato(epochs, potato_threshold=2):
 
@@ -21,14 +22,16 @@ def run_potato(epochs, potato_threshold=2):
 
 
         
+
 def interpolate_blinks(data, eog_events, fs, blink_intervall, intervall_pre):
 
-    blink_intervall_samples = fs / 1000 * blink_intervall #get ms in samples
+    blink_intervall = int(fs / 1000 * blink_intervall) #get ms in samples
+    intervall_pre = int(fs / 1000 * intervall_pre)
 
-    for event in eog_events[:,0]:
+    for event in eog_events:
 
-        cur_onset = event - blink_intervall_samples + intervall_pre
-        cur_offset = event + blink_intervall_samples + intervall_pre
+        cur_onset = event - (blink_intervall + intervall_pre)
+        cur_offset = event + (blink_intervall + intervall_pre)
 
         if cur_onset > 0 and cur_offset < len(data):
 
@@ -38,5 +41,6 @@ def interpolate_blinks(data, eog_events, fs, blink_intervall, intervall_pre):
 
         else:
             print('Not enough data for interpolation')
+
 
     return data

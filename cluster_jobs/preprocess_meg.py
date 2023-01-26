@@ -22,7 +22,7 @@ random.seed(42069) #make it reproducible - sort of
 
 class PreprocessingJob(Job):
 
-    job_data_folder = 'data_meg_05'
+    job_data_folder = 'data_meg'
 
     def run(self,
             subject_id,
@@ -130,23 +130,34 @@ class PreprocessingJob(Job):
         ica.apply(raw, exclude=ecg_indices + eog_indices)
 
         #%% run irasa on raw continuous data
+        raw_mags = raw.copy().pick_types(meg=meg_type)
+
+        #detrend
+        events2detrend = mne.make_fixed_length_events(raw_mags, duration=duration, overlap=duration/2)
+        epochs2detrend = mne.Epochs(raw_mags, events2detrend, event_id=1, tmin=0, 
+                                    tmax=duration, detrend=0, baseline=(0, 0), preload=True)
+
+        raw_detrended = mne.io.RawArray(np.hstack(epochs2detrend), raw_mags.info)
+
+        #%
         kwargs_welch_raw = {'average': 'mean',
                             'window': 'hann',
                             'noverlap': raw.info['sfreq']*duration/2}
-        raw_mags = raw.copy().pick_types(meg=meg_type)
-
-        raw_irasa = self._run_irasa(raw_mags, freq_range, duration, kwargs_welch_raw)
+        
+        raw_irasa = self._run_irasa(raw_detrended, freq_range, duration, kwargs_welch_raw)
 
         #%% run on epochs
-        #TODO: develop smart method to get vertical and horizontal eye movements       
+        #TODO: develop smart method to get vertical and horizontal eye movements
+        # detrend data and dont baseline       
         eog_events = np.concatenate([mne.preprocessing.find_eog_events(raw, ch_name=cur_eog) for cur_eog in ['EOG001', 'EOG002']])
 
-        blink_epochs = mne.Epochs(raw, eog_events, picks='mag', event_id=998, tmin=-0.2, tmax=duration-0.2,
-                                  baseline=(-0.2, -0.05), event_repeated='merge')
+        blink_epochs = mne.Epochs(raw, eog_events, picks='mag', event_id=998, tmin=-1*(duration/2), tmax=duration/2,
+                                  event_repeated='merge', detrend=0, baseline=(0, 0))
 
         epoch_data = blink_epochs.get_data(picks=meg_type)
-        raw_new = mne.io.RawArray(np.hstack(epoch_data), raw_mags.info)
 
+        #concatenate again for irasa
+        raw_new = mne.io.RawArray(np.hstack(epoch_data), raw_mags.info)
 
         kwargs_welch_epo = {'average': 'mean',
                             'window': 'hann',
@@ -188,11 +199,11 @@ class PreprocessingJob(Job):
         meg_trf = eb.NDVar(mag4trfs.T, (time, sensor), name='MEG', info={'unit': 'fT'})
 
         #% run boosting
-        veog_trf = eb.boosting(meg_trf, veog, tstart=-.2, tstop=.4, basis=0.05)
-        heog_trf = eb.boosting(meg_trf, heog, tstart=-.2, tstop=.4, basis=0.05)
-        eye_eve_trf = eb.boosting(meg_trf, eye_eve, tstart=-.2, tstop=.4, basis=0.05)
+        veog_trf = eb.boosting(meg_trf, veog, tstart=-.2, tstop=.4)#, basis=0.05)
+        heog_trf = eb.boosting(meg_trf, heog, tstart=-.2, tstop=.4)#, basis=0.05)
+        eye_eve_trf = eb.boosting(meg_trf, eye_eve, tstart=-.2, tstop=.4)#, basis=0.05)
         #% cmb boosting
-        cmb_trf = eb.boosting(meg_trf, [veog, heog, eye_eve], tstart=-.2, tstop=.4, basis=0.05)
+        cmb_trf = eb.boosting(meg_trf, [veog, heog, eye_eve], tstart=-.2, tstop=.4)#, basis=0.05)
         
         #%%
         data = {'age': df['measurement_age'],

@@ -67,6 +67,7 @@ for idx, file in enumerate(all_files):
 
     if cur_file['blink_epochs'].get_data().shape[0] > 50: #minimum trial requirement
 
+
         #evoked
         evoked = (cur_file['blink_epochs'].average()
                                           .resample(sfreq=100)
@@ -76,11 +77,23 @@ for idx, file in enumerate(all_files):
                                   connectivity='grid'
                                   )
 
-        # trial based irasa
+        
         #overwrite info field for spectrum
         info_psd = mne.Info(cur_file['blink_epochs'].info, sfreq=2)
-        
 
+        #irasa whole data
+        periodic_irasa_nd = eb.load.fiff.evoked_ndvar(mne.EvokedArray(cur_file['raw_irasa']['periodic'], info=info_psd),
+                                  name='periodic_raw',
+                                  connectivity='grid'
+                                  )
+
+        aperiodic_irasa_nd = eb.load.fiff.evoked_ndvar(mne.EvokedArray(cur_file['raw_irasa']['aperiodic'], info=info_psd),
+                                  name='aperiodic_raw',
+                                  connectivity='grid'
+                                  )
+
+
+        # trial based irasa
         periodic_irasa_evo_nd = eb.load.fiff.evoked_ndvar(mne.EvokedArray(cur_file['epoch_irasa']['periodic'], info=info_psd),
                                   name='periodic_evoked',
                                   connectivity='grid'
@@ -91,16 +104,19 @@ for idx, file in enumerate(all_files):
                                   connectivity='grid'
                                   )
         
-        cur_file['eye_eve_trf'].h.x = np.abs(cur_file['eye_eve_trf'].h.x)
+        #cur_file['eye_eve_trf'].h.x = np.abs(cur_file['eye_eve_trf'].h.x)
 
         #prepare data for eelbrain dataset
         data4ds.append([cur_file['subject_id'], int(cur_file['tinnitus'].to_numpy()[0]), int(cur_file['age']),
                         cur_file['blink_epochs'].get_data().shape[0], (np.abs(cur_file['eog_scores']) > 0.5).sum(),
-                        evoked_nd, periodic_irasa_evo_nd, aperiodic_irasa_evo_nd, cur_file['eye_eve_trf'].h])
+                        evoked_nd, periodic_irasa_evo_nd, aperiodic_irasa_evo_nd, periodic_irasa_nd, aperiodic_irasa_nd,
+                        cur_file['eye_eve_trf'].h, cur_file['veog_trf'].h, cur_file['heog_trf'].h,])
 
 
 #%%
-ds = eb.Dataset.from_caselist(['subject_id', 'tinnitus', 'age', 'n_blinks', 'n_eog_comps', 'evoked', 'periodic_evoked', 'aperiodic_evoked', 'trf'], data4ds, random='subject_id')
+ds = eb.Dataset.from_caselist(['subject_id', 'tinnitus', 'age', 'n_blinks', 'n_eog_comps', 'evoked', 
+                               'periodic_evoked', 'aperiodic_evoked', 'periodic_raw', 'aperiodic_raw', 
+                               'blink_trf', 'veog_trf', 'heog_trf'], data4ds, random='subject_id')
 
 #%%
 ds_eog = ds[np.logical_and(ds['n_eog_comps'] > 0, ds['n_eog_comps'] < 3)]
@@ -166,6 +182,15 @@ sns.despine()
 pg.ttest(x=tinn_match.query('tinnitus == True')['n_blinks'],
          y=tinn_match.query('tinnitus == False')['n_blinks'],)
 
+
+#%%
+test_trf_v = eb.testnd.TTestIndependent(y='veog_trf', x='tinnitus', ds=ds2test,)# tfce=True)
+p_trf_v = eb.plot.TopoButterfly(test_trf_v, clip='circle')
+
+#%%
+test_trf_h = eb.testnd.TTestIndependent(y='heog_trf', x='tinnitus', ds=ds2test,)# tfce=True)
+p_trf_h = eb.plot.TopoButterfly(test_trf_h, clip='circle')
+
 #%%
 test_trf = eb.testnd.TTestIndependent(y='trf', x='tinnitus', ds=ds2test,)# tfce=True)
 p_trf = eb.plot.TopoButterfly(test_trf, clip='circle')
@@ -179,28 +204,10 @@ p_periodic_evoked = eb.plot.TopoButterfly(test_periodic, clip='circle')
 
 
 #%%
+test_aperiodic_raw = eb.testnd.TTestIndependent(y='aperiodic_raw', x='tinnitus', ds=ds2test)#, tfce=True)
+p_aperiodic__raw = eb.plot.TopoButterfly(test_aperiodic_raw, clip='circle')
+#%%
+test_periodic_raw = eb.testnd.TTestIndependent(y='periodic_raw', x='tinnitus', ds=ds2test,)#, tfce=True)
+p_periodic__raw = eb.plot.TopoButterfly(test_periodic_raw, clip='circle')
 
-
-#info dataframe
-all_info_dfs.append(pd.DataFrame({'subject_id': cur_file['subject_id'],
-            'tinnitus': cur_file['tinnitus'],
-            'age': cur_file['age'],
-            'n_blinks': cur_file['blink_epochs'].get_data().shape[0],
-            }))
-
-# %%
-df_blink_info = pd.concat(all_info_dfs)
-
-g = sns.stripplot(data=df_blink_info, x='tinnitus', y='n_blinks', hue='tinnitus', size=10, alpha=0.05)
-g = sns.pointplot(data=df_blink_info, x='tinnitus', y='n_blinks', hue='tinnitus', markers="_", scale=1.7,)
-g.legend_.remove()
-
-g.set_ylabel('n eye events')
-g.set_xlabel('Tinnitus')
-
-g.figure.set_size_inches(5,4)
-sns.despine()
-
-# %%
-(df_blink_info['n_blinks'] > 50).mean()
 # %%

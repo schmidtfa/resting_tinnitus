@@ -1,0 +1,19 @@
+channels:
+  - conda-forge
+dependencies:
+  - mne
+  - h5py
+  - ipython
+  - pip
+  - pymc>=5
+  - arviz
+  - matplotlib>=3.5
+  - pandas< 2
+  - seaborn
+  - joblib
+  - numpyro
+  - pip:
+      - plus_slurm
+      - obob_mne
+      - -e file:///mnt/obob/staff/fschmidt/git/fooof/
+      - pymatreader

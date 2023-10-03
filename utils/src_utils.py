@@ -99,6 +99,7 @@ def raw2source(raw, subject_id, subjects_dir, preproc_settings, parc='HCPMMP1'):
                   'rh': rh,
                   'parc': parc,
                   'names_order_mne': names_order_mne}
+    #TODO: Try fft first and then get label time course
 
     label_tc = mne.extract_label_time_course(stc, labels_mne, src, mode='mean') #TODO: Maybe try PCA
 

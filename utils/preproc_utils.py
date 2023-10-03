@@ -3,7 +3,7 @@ import numpy as np
 from datetime import datetime
 from os import listdir
 from os.path import join
-from rm_train import rm_train_ica
+#from rm_train import rm_train_ica
 
 
 def preproc_data(cur_data, 
@@ -77,11 +77,11 @@ def preproc_data(cur_data,
         ecg_indices, _ = ica.find_bads_ecg(cur_data_copy, measure='correlation', threshold=ica_threshold)
 
         #remove train
-        r_train = rm_train_ica(cur_data_copy, ica)
-        train_indices = list(np.arange(len(r_train))[r_train > ica_threshold])
+        #r_train = rm_train_ica(cur_data_copy, ica)
+        #train_indices = list(np.arange(len(r_train))[r_train > ica_threshold])
 
         #% drop physiological components
-        ica.apply(cur_data, exclude=ecg_indices + eog_indices + train_indices)
+        ica.apply(cur_data, exclude=ecg_indices + eog_indices)
 
     if downsample_f != None:
         cur_data.resample(downsample_f, npad="auto")

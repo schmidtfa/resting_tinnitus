@@ -3,7 +3,7 @@ from cluster_jobs.preproc import PreprocessingJob
 from plus_slurm import ApptainerJobCluster, PermuteArgument
 import pandas as pd
 #% get jobcluster
-job_cluster = ApptainerJobCluster(required_ram='40G',
+job_cluster = ApptainerJobCluster(required_ram='80G',
                          request_time=6000,
                          request_cpus=2,
                          apptainer_image='oras://ghcr.io/thht/obob-singularity-container/xfce_desktop_minimal_bullseye:latest',
@@ -16,6 +16,8 @@ subject_ids = df_all['subject_id'].unique()
 #% put in jobs...
 job_cluster.add_job(PreprocessingJob,
                     subject_id=PermuteArgument(subject_ids),
+                    sgramm=True,
+                    duration=2
                     )
 #% submit...
 job_cluster.submit(do_submit=True)

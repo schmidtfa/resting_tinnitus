@@ -46,6 +46,7 @@ martha_sel = resting_martha_pta.query('external_patient_id == @tinnitus_subs').c
 martha_sel['dB'] = np.nanmean(martha_sel[['hl_r_al_avg', 'hl_l_al_avg']], axis=1)
 martha_sel.columns = ['measurement_age', 'subject_id', 'hl_r', 'hl_l', 'tinnitus_distress', 'dB']
 df_martha_clean = martha_sel[['subject_id', 'measurement_age', 'tinnitus_distress', 'dB']].copy()
+df_martha_clean['tinnitus_distress'] = df_martha_clean['tinnitus_distress'] / 100
 df_martha_clean['tinnitus_b'] = True
 
 #%%
@@ -69,7 +70,7 @@ resting_list = pd.read_csv('../notebooks/resting_list_single.csv')
 #%% merge both
 df_cmb = pd.merge(resting_list, df_tinn_cmb,  on='subject_id')
 df_cmb.drop_duplicates('subject_id', inplace=True, keep='last')
-df_cmb.to_csv('../data/subject_lists/df_tinnitus.csv')
+#df_cmb.to_csv('../data/subject_lists/df_tinnitus.csv')
 
 
 #%%
@@ -81,6 +82,18 @@ sns.catplot(data=df_cmb, x='tinnitus', y='measurement_age', kind='swarm')
 #%%
 sns.catplot(data=df_cmb, x='tinnitus', y='dB', kind='swarm')
 
+#for bad subs preprocessing fails
+bad_subs = ['20000216rpgu', #10khz
+                '19940909gbkr', 
+                '19620826wlti',
+                '19480615kthn', 
+                '19650312eips', #head is tilted
+                '19620430grgc',
+                '19991224hika',
+                '19641104usbl']
+
+
+df_cmb = df_cmb.query('subject_id != @bad_subs')
 #%% 
 from scipy.stats import zscore
 
@@ -151,19 +164,19 @@ for subject in df_tinn['subject_id']:
 #%%
 df_matched = pd.concat([pd.concat(best_match_list, axis=1).T, df_tinn]).reset_index()
 df_matched.drop_duplicates('subject_id', inplace=True, keep='last')
-df_matched.to_csv('../data/tinnitus_match.csv')
+#df_matched.to_csv('../data/tinnitus_match.csv')
 #%%
 fig, ax = plt.subplots()
 
-sns.swarmplot(data=df_matched, x='tinnitus', y='measurement_age',
+sns.swarmplot(data=df_matched, x='tinnitus', y='measurement_age', palette='deep',
               hue='tinnitus', ax=ax, size=10, alpha=0.4, )#legend=False)
-sns.pointplot(data=df_matched, x='tinnitus', y='measurement_age', hue='tinnitus',
+sns.pointplot(data=df_matched, x='tinnitus', y='measurement_age', hue='tinnitus', palette='deep',
               ax=ax, estimator='mean', markers='+', scale=1.5)
 fig.set_size_inches(4,6)
 ax.set_ylabel('age (years)')
 sns.despine()
 
-#fig.savefig('../results/age_match.svg')
+fig.savefig('../results/age_match.svg')
 
 #%%
 from scipy.stats import mannwhitneyu
@@ -174,9 +187,9 @@ mannwhitneyu(df_matched.query('tinnitus == True')['measurement_age'].to_numpy().
 #%%
 fig, ax = plt.subplots()
 
-sns.swarmplot(data=df_matched, x='tinnitus', y='dB',
+sns.swarmplot(data=df_matched, x='tinnitus', y='dB', palette='deep',
               hue='tinnitus', ax=ax, size=10, alpha=0.4,)# legend=False)
-sns.pointplot(data=df_matched, x='tinnitus', y='dB', hue='tinnitus', 
+sns.pointplot(data=df_matched, x='tinnitus', y='dB', hue='tinnitus', palette='deep',
               ax=ax, estimator='mean', markers='+', scale=1.5)
 fig.set_size_inches(4,6)
 ax.set_ylabel('Hearing Threshold (dB)')
@@ -209,7 +222,34 @@ sns.despine()
 fig.savefig('../results/gender_match.svg')
 
 # %%
-plt.hist(df_matched['tinnitus_distress'])
+df_tinnitus = df_matched.query('tinnitus == True')
+strong_distress = df_tinnitus['tinnitus_distress'] > 0
+
+fig, ax = plt.subplots(figsize=(4,4))
+ax.hist(df_tinnitus['tinnitus_distress'][strong_distress], bins=10, color=sns.color_palette('deep')[0])
+ax.set_ylabel('Count')
+ax.set_xlabel('Tinnitus Distress')
+
+sns.despine()
 # %%
-np.unique(df_matched['tinnitus'], return_counts=True)
+import scipy.stats as stats
+
+
+
+stats.pearsonr(df_tinnitus['tinnitus_distress'][strong_distress], df_tinnitus['dB'][strong_distress])
+
+#%%
+plt.scatter(df_tinnitus['tinnitus_distress'][strong_distress], df_tinnitus['dB'][strong_distress])
+
+# %%
+
+stats.pearsonr(df_tinnitus['tinnitus_distress'][strong_distress], df_tinnitus['measurement_age'][strong_distress])
+
+#%%
+plt.scatter(df_tinnitus['tinnitus_distress'][strong_distress], df_tinnitus['measurement_age'][strong_distress])
+# %%
+
+stats.pearsonr(df_tinnitus['measurement_age'][strong_distress], df_tinnitus['dB'][strong_distress])
+# %%
+plt.scatter(df_tinnitus['measurement_age'], df_tinnitus['dB'])
 # %%

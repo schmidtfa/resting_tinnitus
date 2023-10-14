@@ -24,15 +24,9 @@ new_rc_params = {'text.usetex': False,
 }
 mpl.rcParams.update(new_rc_params)
 
-#%% get data from model
-feature = 'offset'
-ap_mode = 'knee'
-freq = 'alpha'
-ap = True
-local = False
 
-#%%
-
+local = True
+#%%get data
 if local:
     home_base = '/Users/b1059770/Library/Group Containers/G69SCX94XU.duck/Library/Application Support/duck/Volumes.noindex/bomber/resting_tinnitus'
 else:
@@ -48,17 +42,6 @@ fs_path = join(home_base, mri_path, 'fsaverage')
 src_file = join(fs_path, 'bem', 'fsaverage-ico-4-src.fif')
 subjects_dir = join(home_base, 'data/freesurfer/')
 
-#get data
-if ap:
-    mdf = az.from_netcdf(join(data_dir, f'{feature}_{ap_mode}.nc'))
-else:
-    mdf = az.from_netcdf(join(data_dir, f'{freq}_{ap_mode}_{feature}.nc'))
-ch_effects = az.summary(mdf, var_names='beta|')
-
-
-stc_parc = np.exp(np.concatenate([[ch_effects['mean'][0]], ch_effects['mean']]))
-stc_mask = np.exp(np.concatenate([[ch_effects['hdi_3%'][0]], ch_effects['hdi_3%']])) < 1
-
 src = mne.read_source_spaces(src_file)
 labels_mne = mne.read_labels_from_annot('fsaverage', parc='HCPMMP1', subjects_dir=subjects_dir)
 
@@ -66,6 +49,36 @@ names_order_mne = np.array([label.name[:-3] for label in labels_mne])
 
 rh = [True if label.hemi == 'rh' else False for label in labels_mne]
 lh = [True if label.hemi == 'lh' else False for label in labels_mne]
+
+
+
+#%%
+# tinnitus ~ (1 + exponent|channel)
+# corr ~ 1 + group + (1 + group|time) + (1|subject)
+
+#%%
+#tinnitus ~ (1 + exponent|channel)
+
+#%%
+
+#%% get data from model
+feature = 'cf'
+freq = 'alpha'
+
+if feature in ['exponent', 'offset', 'knee_freq', 'n_peaks']:
+    #ch_effects = pd.read_csv(join(data_dir, f'{feature}.csv'))
+    mdf = az.from_netcdf(join(data_dir, f'{feature}.nc'))
+else:
+    #ch_effects = pd.read_csv(join(data_dir, f'{freq}_{feature}.csv'))
+    mdf = az.from_netcdf(join(data_dir, f'{freq}_{feature}.nc'))
+ch_effects = az.summary(mdf, var_names='beta|', hdi_prob=.89)
+
+#%%
+stc_parc = (np.concatenate([[ch_effects['mean'][0]], ch_effects['mean']])) / 4 #on probability scale
+#stc_mask = (np.concatenate([[ch_effects['hdi_5.5%'][0]], ch_effects['hdi_5.5%']])) < 0.185
+#stc_mask = (np.concatenate([[ch_effects['hdi_94.5%'][0]], ch_effects['hdi_94.5%']])) > -0.185
+stc_mask = np.ones(stc_parc.shape) == 0
+
 
 #%%
 
@@ -80,7 +93,6 @@ def plot_parc(stc_parc, stc_mask, cmap, parc='HCPMMP1'):
         'subjects_dir':subjects_dir,
         'cortex':[(.6,.6,.6), (.6,.6,.6)], #turn sulci and gyri to the same grey
         'background':'white',
-        'show_toolbar':False, 
         'offscreen':True,
         'size':(800, 400),
     }
@@ -122,8 +134,9 @@ def plot_parc(stc_parc, stc_mask, cmap, parc='HCPMMP1'):
         vtx_data = cur_stc_ordered[labels]
         vtx_data[labels == -1] = -1
 
-        brain.add_data(vtx_data, hemi=hemi, fmin=0, fmid=0.5,
-                       fmax=1, colormap=cmap, #np.nanmax(stc_parc)
+        brain.add_data(vtx_data, hemi=hemi, fmin=stc_parc.min(), #fmid=1,
+                       fmax=stc_parc.max(), 
+                       colormap=cmap, #np.nanmax(stc_parc)
                        colorbar=False, alpha=.8)
 
     
@@ -134,7 +147,7 @@ def plot_parc(stc_parc, stc_mask, cmap, parc='HCPMMP1'):
 
 
 #%%
-eff_brain = plot_parc(stc_parc, stc_mask, 'Reds')
+eff_brain = plot_parc(stc_parc, stc_mask, 'magma')
 
 #%%
 df_knee_across = pd.read_csv(join(home_base, 'data/knee_across_brain.csv'))

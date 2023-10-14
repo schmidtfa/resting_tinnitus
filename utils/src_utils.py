@@ -10,7 +10,6 @@ from preproc_utils import preproc_data
 import matplotlib as mpl
 
 
-
 def get_nearest_empty_room(info):
     """
     This function finds the empty room file with the closest date to the current measurement.
@@ -53,7 +52,7 @@ def get_nearest_empty_room(info):
 
 
 
-def raw2source(raw, subject_id, subjects_dir, preproc_settings, parc='HCPMMP1'):
+def raw2source(raw, subject_id, subjects_dir, preproc_settings):
 
     # %Compute a covariance matrix
     ###### ESTIMATE NOISE COVARIANCE MATRIX
@@ -86,28 +85,7 @@ def raw2source(raw, subject_id, subjects_dir, preproc_settings, parc='HCPMMP1'):
 
     stc = mne.minimum_norm.apply_inverse_raw(raw, inv, lambda2=lambda2, method='MNE')
 
-    #% get tc from parcellation and return
-    src = mne.read_source_spaces(src_file)
-    labels_mne = mne.read_labels_from_annot('fsaverage', parc=parc, subjects_dir=subjects_dir)
-
-    names_order_mne = np.array([label.name[:-3] for label in labels_mne])
-
-    rh = [True if label.hemi == 'rh' else False for label in labels_mne]
-    lh = [True if label.hemi == 'lh' else False for label in labels_mne]
-
-    label_info = {'lh': lh,
-                  'rh': rh,
-                  'parc': parc,
-                  'names_order_mne': names_order_mne}
-    #TODO: Try fft first and then get label time course
-
-    label_tc = mne.extract_label_time_course(stc, labels_mne, src, mode='mean') #TODO: Maybe try PCA
-
-    data_dict = {'label_tc': label_tc,
-                 'label_info': label_info}
-
-
-    return data_dict
+    return stc
 
 
 

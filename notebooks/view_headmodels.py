@@ -5,7 +5,7 @@ import pickle
 import pandas as pd
 
 
-
+subs2check = ['19640925tewm', '19571220rsdo']
 
 #%%
 home_base = '/Users/b1059770/Library/Group Containers/G69SCX94XU.duck/Library/Application Support/duck/Volumes.noindex/bomber/resting_tinnitus'
@@ -28,7 +28,7 @@ df_all = pd.read_csv(join(home_base, 'data/tinnitus_match.csv'))
 subject_ids = list(df_all['subject_id'].unique())
 
 
-subID = '19930506urhe'
+subID = subs2check[1]
 
 coreg  = mne.read_trans(hmfolder + subID + '/' + subID + '-trans.fif')
 
@@ -43,10 +43,3 @@ mne.viz.set_3d_view(fig, **view_kwargs)
 # %%
 mne.io.read_info(hmfolder + subID + '/' + subID + '-trans.fif')
 
-
-#%%
-bad_subjects = ['19541130anfn', '19590423mrbr', 
-                '19761120eitn', '19910703eigl',
-                '19930120laat', '19930506urhe',
-                '19930709crgl', '19930727agwl',
-                ]

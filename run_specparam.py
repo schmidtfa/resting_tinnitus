@@ -18,7 +18,9 @@ subject_ids = df_all['subject_id'].unique()
 job_cluster.add_job(Specparam,
                     subject_id=PermuteArgument(subject_ids),
                     aperiodic_mode=PermuteArgument(['knee', 'fixed']),
-                    freq_range=(1, 100),
+                    peak_threshold=2.5,
+                    min_peak_height=0.1, #as in donoghue paper
+                    freq_range=(0.25, 98),
                     )
 #% submit...
 job_cluster.submit(do_submit=True)

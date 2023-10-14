@@ -6,8 +6,10 @@ import joblib
 from fooof import FOOOFGroup, Bands
 from fooof.analysis import get_band_peak_fg
 from fooof.utils.params import compute_knee_frequency
+from fooof.utils import interpolate_spectrum
 
 import numpy as np
+import numpy.matlib
 import pandas as pd
 
 import random
@@ -24,22 +26,26 @@ class Specparam(Job):
             aperiodic_mode,
             freq_range=(0.5, 100),
             max_n_peaks=10,
+            min_peak_height=0,
+            peak_threshold=2,
             ):
 
-        #%%debug
+        # #%%debug
         # subject_id = '19990822mrae'
         # aperiodic_mode = 'knee'
         # freq_range=(0.5, 100)
+        # max_n_peaks=10
 
         INDIR = '/mnt/obob/staff/fschmidt/resting_tinnitus/data/data_meg'
-        cur_data = joblib.load(list(Path(INDIR).glob(f'{subject_id}/{subject_id}.dat'))[0])
+        cur_data = joblib.load(list(Path(INDIR).glob(f'{subject_id}/{subject_id}__sgramm_False.dat'))[0])
 
         #define some bands
         bands = Bands({ 'delta' : [1, 3],
                         'theta' : [3, 8], 
                         'alpha' : [8, 14],
                         'beta' : [14, 30],
-                        'gamma' : [30, 45]})
+                        'gamma' : [30, 45],
+                        'line_noise': [49, 51]})
 
         #%%
         periodic_list, aperiodic_list = [],[]
@@ -48,20 +54,26 @@ class Specparam(Job):
 
             if key == 'eog':
                 ch_names = ['EOGV', 'EOGH']
+                #% interpolate line noise -> TODO: for some reason this causes nans in the eog and ecg data -> check if potential effects are there
+                #_,  cur_data[key] = interpolate_spectrum(np.matlib.repmat(cur_data['freq'], np.shape(ch_names)[0], 1), cur_data[key], [48, 52])
                 data2fooof = cur_data[key]
             elif key == 'ecg':
                 ch_names = ['ECG']
+                #% interpolate line noise
+                #_,  cur_data[key] = interpolate_spectrum(cur_data['freq'][np.newaxis,:], cur_data[key], [48, 52])
                 #NOTE: little trick to keep using fooofgroup -> only one channel is kept in later parts of the analysis
-                data2fooof = np.concatenate([cur_data[key], cur_data[key]], axis=0) 
+                data2fooof = np.vstack([cur_data[key], cur_data[key]]) 
             elif key == 'src':
                 ch_names = cur_data['src']['label_info']['names_order_mne']
+                #_,  cur_data['src']['label_tc'] = interpolate_spectrum(np.matlib.repmat(cur_data['freq'], np.shape(ch_names)[0], 1), cur_data['src']['label_tc'], [48, 52])
                 data2fooof = cur_data['src']['label_tc']
-
 
             #% do some spectral parametrization
             fg = FOOOFGroup(peak_width_limits=(0.5,4), #more doesnt really make sense to me
                             max_n_peaks=max_n_peaks, #this uses my fooof version with bic -> i.e. best model combination between parsimony and complexity is picked
                             aperiodic_mode=aperiodic_mode,
+                            peak_threshold=peak_threshold,
+                            min_peak_height=min_peak_height,
                             verbose=False) #otherwise log-files > 40gb
 
             fg.fit(cur_data['freq'], data2fooof, freq_range=freq_range)
@@ -104,8 +116,7 @@ class Specparam(Job):
 
 
     #%% utility functions
-    def _get_band_peak_df(self,
-                          fg, bands, ch_names):
+    def _get_band_peak_df(self, fg, bands, ch_names):
 
         """Extract peaks in preset frequency bands and return a pandas dataframe"""
 
@@ -125,8 +136,7 @@ class Specparam(Job):
 
 
 
-    def _get_aperiodic(self, 
-                       fg, ch_names, key, aperiodic_mode):
+    def _get_aperiodic(self, fg, ch_names, key, aperiodic_mode):
 
         """Extract aperiodic activity and return a pandas dataframe"""
 

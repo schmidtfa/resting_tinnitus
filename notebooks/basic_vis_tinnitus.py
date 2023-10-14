@@ -16,12 +16,6 @@ sns.set_context('poster')
 INDIR = '/mnt/obob/staff/fschmidt/resting_tinnitus/data/data_meg'
 all_files = list(Path(INDIR).glob('*/*.dat'))
 
-bad_subjects = ['19541130anfn', '19590423mrbr', 
-                '19761120eitn', '19910703eigl',
-                '19930120laat', '19930506urhe',
-                '19930709crgl', '19930727agwl',
-                ]
-
 # %%
 all_data = []
 

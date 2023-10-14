@@ -56,7 +56,6 @@ class LogReg(Job):
 
             if feature in ['exponent', 'offset', 'knee_freq']:
                 cur_df = (df_aperiodic.query('ch_name != @physio')
-                                      .query('tinnitus == True')
                                      )
 
             elif feature in ['delta', 'theta', 'alpha', 'beta', 'gamma', 'n_peaks']:
@@ -101,11 +100,11 @@ class LogReg(Job):
 
             #%% save
             if feature in ['exponent', 'offset', 'knee_freq', 'n_peaks']:
-                ch_effects.to_csv(f'/mnt/obob/staff/fschmidt/resting_tinnitus/data/lin_reg/{feature}.csv')
-                mdf.to_netcdf(f'/mnt/obob/staff/fschmidt/resting_tinnitus/data/lin_reg/{feature}.nc')
+                ch_effects.to_csv(f'/mnt/obob/staff/fschmidt/resting_tinnitus/data/log_reg/{feature}.csv')
+                mdf.to_netcdf(f'/mnt/obob/staff/fschmidt/resting_tinnitus/data/log_reg/{feature}.nc')
             elif feature in ['delta', 'theta', 'alpha', 'beta', 'gamma']:
-                ch_effects.to_csv(f'/mnt/obob/staff/fschmidt/resting_tinnitus/data/lin_reg/{feature}_{periodic_type}.csv')
-                mdf.to_netcdf(f'/mnt/obob/staff/fschmidt/resting_tinnitus/data/lin_reg/{feature}_{periodic_type}.nc')
+                ch_effects.to_csv(f'/mnt/obob/staff/fschmidt/resting_tinnitus/data/log_reg/{feature}_{periodic_type}.csv')
+                mdf.to_netcdf(f'/mnt/obob/staff/fschmidt/resting_tinnitus/data/log_reg/{feature}_{periodic_type}.nc')
 
 
      # %% define regression model
@@ -114,7 +113,7 @@ class LogReg(Job):
 
     def _run_log_reg(self, df, feature, sample_kwargs, non_centered=True):
 
-        cur_df = df[[feature, 'tinnitus_distress', 'ch_name']].dropna()
+        cur_df = df[[feature, 'tinnitus', 'ch_name']].dropna()
 
         ch_ixs, channel = pd.factorize(cur_df['ch_name'])
         coords = {
@@ -167,5 +166,5 @@ if __name__ == '__main__':
     feature = 'exponent'
     periodic_type=None#'cf'
 
-    job = LinReg(feature=feature, periodic_type=periodic_type)
+    job = LogReg(feature=feature, periodic_type=periodic_type)
     job.run_private()

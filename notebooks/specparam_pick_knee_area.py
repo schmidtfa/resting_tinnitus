@@ -24,7 +24,7 @@ sample_kwargs = {'draws': 1000,
 
 # %%
 INDIR = '/mnt/obob/staff/fschmidt/resting_tinnitus/data/specparam'
-all_files = list(Path('/mnt/obob/staff/fschmidt/resting_tinnitus/data/specparam').glob(f'*/*__peak_threshold_2.5__freq_range_[[]1, 98[]].dat'))
+all_files = list(Path('/mnt/obob/staff/fschmidt/resting_tinnitus/data/specparam').glob(f'*/*__peak_threshold_2.5__freq_range_[[]0.25, 98[]].dat'))
 
 
 # %%
@@ -122,12 +122,12 @@ with pm.Model(coords=coords) as glm:
 
     mu_a = pm.Normal('intercept', 0, 1.5)
     z_a = pm.Normal('z_a', 0, 1.5, dims="ch_name")
-    sigma_a = pm.Exponential('sigma_intercept', lam=1)
+    sigma_a = pm.Exponential('sigma_intercept', lam=0.5)
 
 
     mu_b = pm.Normal('beta', 0, 1.)
     z_b = pm.Normal('z_b', 0, 1., dims="ch_name")
-    sigma_b = pm.Exponential('sigma_beta', lam=1)
+    sigma_b = pm.Exponential('sigma_beta', lam=0.5)
 
     # #model correlation of predictors -> this will be needed to incorporate ecg and eog
     # chol, corr, stds = pm.LKJCholeskyCov(
@@ -174,6 +174,25 @@ knee_settings = {'knee': list(ave_knee.index[ave_knee > 0.5]),
 
 
 joblib.dump(knee_settings, '../data/knee_settings.dat')
+
+#%%
+knee_chans = knee_settings['knee']
+fixed_chans = knee_settings['fixed']
+
+cur_df = pd.concat([df_ap_brain.query("ch_name == @knee_chans").query('aperiodic_mode == "knee"'),
+                    df_ap_brain.query("ch_name == @fixed_chans").query('aperiodic_mode == "fixed"')])
+#%%
+cur_df.dropna(inplace=True)
+cur_df['exponent'] = zscore(cur_df['exponent'])
+
+md = bmb.Model(formula='tinnitus ~ 1 + exponent + (1 + exponent|ch_name)',
+               data=cur_df)
+md.build()
+
+#%%
+mdf = md.fit()
+
+
 #%%
 knee_chans = knee_settings['knee']
 fixed_chans = knee_settings['fixed']

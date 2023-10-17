@@ -10,7 +10,8 @@ job_cluster = ApptainerJobCluster(required_ram='4G',
                          apptainer_image='oras://ghcr.io/thht/obob-singularity-container/xfce_desktop_minimal_bullseye:latest',
                          python_bin='/mnt/obob/staff/fschmidt/resting_tinnitus/.venv/bin/python')
 
-feature_list = [ 'theta', 'alpha', 'delta', 'knee_freq', 'beta','exponent', 'offset', 'gamma', 'n_peaks']
+feature_list = ['delta', 'theta', 'alpha', 'beta', 'gamma', 'knee_freq', 'exponent', 'offset',  'n_peaks']
+feature_list = ['exponent', 'offset',]
 
 df_all = pd.read_csv('/mnt/obob/staff/fschmidt/resting_tinnitus/data/tinnitus_match.csv')
 subject_ids = list(df_all['subject_id'].unique())
@@ -21,9 +22,9 @@ job_cluster.add_job(LogReg,
                     feature=PermuteArgument(feature_list),
                     low_freq=0.25,
                     up_freq=98,
-                    periodic_type=PermuteArgument(['cf', 'pw', None]),
+                    periodic_type=PermuteArgument([ None, 'cf', 'pw',]),
                     )
-#%% submit...
+#% submit...
 job_cluster.submit(do_submit=True)
 
 #job_cluster.run_local()

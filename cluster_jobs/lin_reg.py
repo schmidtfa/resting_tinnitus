@@ -17,8 +17,9 @@ class LinReg(Job):
     def run(self,
             subject_list,
             feature,
-            low_freq=1,
+            low_freq=0.25,
             up_freq=98,
+            mask_level=.90,
             periodic_type=None,
             ):
 
@@ -35,8 +36,7 @@ class LinReg(Job):
                             'chains': 4,
                             'target_accept': 0.95,}
 
-            all_files = list(Path('/mnt/obob/staff/fschmidt/resting_tinnitus/data/specparam').glob(f'*/*peak_threshold_3*[[]{low_freq}, {up_freq}[]].dat'))
-
+            all_files = list(Path('/mnt/obob/staff/fschmidt/resting_tinnitus/data/specparam').glob(f'*/*__peak_threshold_2.5__freq_range_[[]{low_freq}, {up_freq}[]].dat'))
             #%%
             periodic, aperiodic = [], []
 
@@ -70,9 +70,8 @@ class LinReg(Job):
                                      .query('tinnitus == True')) #arbitrary choice -> just need the peaks
                 
             
-            #cur_df = knee_or_fixed(cur_df) #get fixed or knee model
+            #get knee and fixed chans
             knee_settings = joblib.load('/mnt/obob/staff/fschmidt/resting_tinnitus/data/knee_settings.dat')
-            #%%
             knee_chans = knee_settings['knee']
             fixed_chans = knee_settings['fixed']
             
@@ -96,7 +95,7 @@ class LinReg(Job):
                 cur_df['beta'][np.logical_and(df_cf['beta'] < 17, df_cf['beta'] > 16).to_numpy()] = np.nan
             
             #%% drop bad fits
-            cur_df = cur_df.mask(cur_df['r_squared'] < .90)
+            cur_df = cur_df.mask(cur_df['r_squared'] < mask_level)
             
             #%%
             mdf = self._run_lin_reg(cur_df, feature, sample_kwargs)
@@ -115,7 +114,7 @@ class LinReg(Job):
 
     #tinnitus_distress ~ 1 + feature + (1 + feature|channel)
 
-    def _run_lin_reg(self, df, feature, sample_kwargs, non_centered=True):
+    def _run_lin_reg(self, df, feature, sample_kwargs):
 
         cur_df = df[[feature, 'tinnitus_distress', 'ch_name']].dropna()
 
@@ -126,40 +125,21 @@ class LinReg(Job):
         }
 
         with pm.Model(coords=coords) as glm:
-
-
-            if non_centered:
-                mu_a = pm.Normal('intercept', 0, 1.5)
-                z_a = pm.Normal('z_a', 0, 1.5, dims="ch_name")
-                sigma_a = pm.Exponential('sigma_intercept', lam=1)
-
-
-                mu_b = pm.Normal('beta', 0, 1)
-                z_b = pm.Normal('z_b', 0, 1, dims="ch_name")
-                sigma_b = pm.Exponential('sigma_beta', lam=1)
-
-                #channel priors centered parametrization -> surprisingly faster than non-centered
-                alpha = pm.Deterministic('1|', mu_a + z_a * sigma_a, dims="ch_name")
-                beta = pm.Deterministic('beta|', mu_b + z_b * sigma_b, dims="ch_name")
-            
-            else:
-                #Hyperpriors
-                a = pm.Normal('intercept', 0, 1.5)
-                sigma_a = pm.Exponential('sigma_intercept', lam=1)
-                b = pm.Normal('beta', 0, 1)
-                sigma_b = pm.Exponential('sigma_beta', lam=1)
-
-                #channel priors centered parametrization -> surprisingly faster than non-centered
-                alpha = pm.Normal('1|', mu=a, sigma=sigma_a, dims="ch_name")
-                beta = pm.Normal('beta|', mu=b, sigma=sigma_b, dims="ch_name")
+            #Decided to fit an unpooled model. 
+            #Partial Pooling over the brain doesnt seem sensible (maybe within roi)
+            #priors
+            alpha = pm.Normal('1|', mu=0, sigma=1.5, dims="ch_name")
+            beta = pm.Normal('beta|', mu=0, sigma=1, dims="ch_name")
 
             #likelihood
             sigma = pm.Exponential('sigma',  lam=1)
-            observed = pm.Normal('tinnitus',
-                                    mu=alpha[ch_ixs] + beta[ch_ixs]*zscore(cur_df[feature]),
-                                    sigma=sigma,
-                                    observed=zscore(cur_df['tinnitus_distress']),
-                                    dims="obs_id")
+            psi = pm.Uniform('psi', 0.1, 0.9)
+            observed = pm.HurdleLogNormal('tinnitus_distress',
+                                          psi=psi,#pm.math.invlogit(alpha[ch_ixs] + beta[ch_ixs]*zscore(cur_df[feature])),
+                                          mu=alpha[ch_ixs] + beta[ch_ixs]*zscore(cur_df[feature]),
+                                          sigma=sigma,
+                                          observed=cur_df['tinnitus_distress'],
+                                          dims="obs_id")
 
             #mdf = sample_numpyro_nuts(**sample_kwargs)
             mdf =  pm.sample(**sample_kwargs)

@@ -48,7 +48,6 @@ names_order_mne = np.array([label.name[:-3] for label in labels_mne])
 sys.path.append(join(home_base, 'utils'))
 
 from src_utils import plot_parc
-from specparam_utils import knee_or_fixed
 
 sns.set_style('ticks')
 sns.set_context('poster')
@@ -60,9 +59,7 @@ no_tin_c = cmap[0]
 
 
 #%%
-#__min_peak_height_0.1
-all_files = list(Path(join(home_base, 'data/specparam')).glob(f'*/*__peak_threshold_3__freq_range_[[]0.25, 98[]].dat'))
-
+all_files = list(Path(join(home_base, 'data/specparam')).glob(f'*/*__peak_threshold_2.5__freq_range_[[]0.25, 98[]].dat'))
 
 # %%
 periodic, aperiodic = [], []
@@ -85,7 +82,6 @@ physio_chs = ['ECG', 'EOGH', 'EOGV']
 df_p = pd.concat(periodic).query('ch_name != @physio_chs')
 df_ap = pd.concat(aperiodic).query('ch_name != @physio_chs')
 
-#%% drop bad fits
 
 #%% select knee channels
 knee_settings = joblib.load(join(home_base, 'data/knee_settings.dat'))
@@ -95,11 +91,37 @@ fixed_chans = knee_settings['fixed']
 df_ap_new = pd.concat([df_ap.query("ch_name == @knee_chans").query('aperiodic_mode == "knee"'),
                     df_ap.query("ch_name == @fixed_chans").query('aperiodic_mode == "fixed"')])
 
-#df_ap_new = df_ap_new.mask(df_ap_new['r_squared'] < .80)
 #%% plot some histograms
+#start with tinnitus distress distribution
+tinn_distress = df_ap_new.drop_duplicates('subject_id').query('tinnitus == True')[['subject_id', 'tinnitus_distress']]
+
+
+fig, ax = plt.subplots(figsize=(4,4))
+ax.hist(tinn_distress['tinnitus_distress'], bins=15, density=False, color=tin_c,)
+ax.set_ylabel('Count')
+ax.set_xlabel('Tinnitus Distress')
+sns.despine()
+fig.savefig(f'../results/tinnitus_distress_hist.svg')
+
+#%% 
+%matplotlib inline
+
+fig, ax = plt.subplots(figsize=(4,4))
+
+ax.hist(df_ap_new.query('tinnitus == False')['r_squared'], color=no_tin_c, edgecolor=no_tin_c, bins=1000)
+ax.set_ylabel('Count')
+ax.set_xlabel('R2')
+ax.set_xlim(.60, 1)
+plt.axvline(0.9, color='#CC5555', label='cut-off', linestyle='--')
+plt.legend()
+#ax.set_ylim(0, 10000)
+sns.despine()
+fig.savefig(f'../results/r_squared_hist_no_tinnitus.svg')
+
 
 #%% exponent
-%matplotlib inline
+#mask bad channels
+df_ap_new = df_ap_new.mask(df_ap_new['r_squared'] < .90)
 fig, ax = plt.subplots(figsize=(4,4))
 
 ax.hist(df_ap_new.query('tinnitus == False')['exponent'], color=no_tin_c, edgecolor=no_tin_c, bins=50)
@@ -139,22 +161,10 @@ sns.despine()
 fig.savefig(f'../results/offset_hist_no_tinnitus.svg')
 
 
-#%%
-fig, ax = plt.subplots(figsize=(4,4))
-
-ax.hist(df_ap_new.query('tinnitus == False')['r_squared'], color=no_tin_c, edgecolor=no_tin_c, bins=1000)
-ax.set_ylabel('Count')
-ax.set_xlabel('R2')
-ax.set_xlim(.50, 1)
-#ax.set_ylim(0, 10000)
-sns.despine()
-fig.savefig(f'../results/r_squared_hist_no_tinnitus.svg')
-
-
 #%% plot aperiodic activity on parcellation
 df_ap_g = df_ap_new.groupby('ch_name').mean()
 #%%
-cur_param = "exponent"
+cur_param = "knee"
 tinnitus = False
 
 df2plot = df_ap_new.query(f'tinnitus == {tinnitus}').groupby('ch_name').mean().reset_index()
@@ -220,7 +230,7 @@ df_cf_new['n_peaks'] = df_cf_new['n_peaks'] - np.logical_and(df_cf_new['beta'] <
 
 df_cf_new['beta'][np.logical_and(df_cf_new['beta'] < 17, df_cf_new['beta'] > 16).to_numpy()] = np.nan
 
-#df_cf_new = df_cf_new.mask(df_cf_new['r_squared'] < .80)
+df_cf_new = df_cf_new.mask(df_cf_new['r_squared'] < .90)
 
 fig, ax = plt.subplots(figsize=(4,4))
 
@@ -271,6 +281,11 @@ df_pw_new['n_oscillations'] = (np.isnan(df_pw_new.reset_index()[['delta', 'theta
 for feature in ['delta', 'theta', 'alpha', 'beta', 'gamma']:
     df_pw_new[f'peaks_{feature}'] = np.isnan(df_pw_new[feature]) == False
 
+    df_pw_new[f'{feature}_score'] = df_pw_new[f'peaks_{feature}'] * df_pw_new[f'{feature}']
+
+#%%
+df_pw_new
+
 #%%
 cur_param = "n_peaks"
 tinnitus = False
@@ -295,17 +310,21 @@ stc_mask = np.zeros(stc_parc.shape[0]) == 1
 stc_mask[:2] = True #mask subcortical
 
 
+if cur_param == "n_peaks":
+    clevels = (df2plot[cur_param].min(),
+               df2plot[cur_param].mean(),
+               df2plot[cur_param].max())
+else:
+    clevels=(0,
+             0.5,
+             1)
+
 cur_eff = plot_parc(stc_parc, 
           stc_mask, 
           labels_mne, 
           subjects_dir, 
           cmap='magma',
-          clevels=(df2plot[cur_param].min(),
-                  df2plot[cur_param].mean(),
-                  df2plot[cur_param].max()),
-           #clevels=(0,
-            #        0.3,
-             #       .6),
+          clevels=clevels,
           plot_kwargs=plot_kwargs, 
           parc='HCPMMP1')
 

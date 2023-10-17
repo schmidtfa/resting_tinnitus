@@ -32,7 +32,7 @@ if local:
 else:
     home_base = '/mnt/obob/staff/fschmidt/resting_tinnitus'
 
-data_dir = join(home_base, 'data/log_reg/')
+data_dir = join(home_base, 'data/log_reg/')#final_new_pool_3/')
 
 trans_path = 'data/headmodels/'
 mri_path = 'data/freesurfer/'
@@ -49,38 +49,6 @@ names_order_mne = np.array([label.name[:-3] for label in labels_mne])
 
 rh = [True if label.hemi == 'rh' else False for label in labels_mne]
 lh = [True if label.hemi == 'lh' else False for label in labels_mne]
-
-
-
-#%%
-# tinnitus ~ (1 + exponent|channel)
-# corr ~ 1 + group + (1 + group|time) + (1|subject)
-
-#%%
-#tinnitus ~ (1 + exponent|channel)
-
-#%%
-
-#%% get data from model
-feature = 'cf'
-freq = 'alpha'
-
-if feature in ['exponent', 'offset', 'knee_freq', 'n_peaks']:
-    #ch_effects = pd.read_csv(join(data_dir, f'{feature}.csv'))
-    mdf = az.from_netcdf(join(data_dir, f'{feature}.nc'))
-else:
-    #ch_effects = pd.read_csv(join(data_dir, f'{freq}_{feature}.csv'))
-    mdf = az.from_netcdf(join(data_dir, f'{freq}_{feature}.nc'))
-ch_effects = az.summary(mdf, var_names='beta|', hdi_prob=.89)
-
-#%%
-stc_parc = (np.concatenate([[ch_effects['mean'][0]], ch_effects['mean']])) / 4 #on probability scale
-#stc_mask = (np.concatenate([[ch_effects['hdi_5.5%'][0]], ch_effects['hdi_5.5%']])) < 0.185
-#stc_mask = (np.concatenate([[ch_effects['hdi_94.5%'][0]], ch_effects['hdi_94.5%']])) > -0.185
-stc_mask = np.ones(stc_parc.shape) == 0
-
-
-#%%
 
 def plot_parc(stc_parc, stc_mask, cmap, parc='HCPMMP1'):
 
@@ -145,37 +113,44 @@ def plot_parc(stc_parc, stc_mask, cmap, parc='HCPMMP1'):
     
     return screenshot
 
+#%%
+# tinnitus ~ (1 + exponent|channel)
+# corr ~ 1 + group + (1 + group|time) + (1|subject)
 
 #%%
+#tinnitus ~ (1 + exponent|channel)
+
+#%%
+
+#%% get data from model
+feature = 'offset'
+freq = 'gamma'
+
+if feature in ['exponent', 'offset', 'knee_freq', 'n_peaks']:
+    #ch_effects = pd.read_csv(join(data_dir, f'{feature}.csv'))
+    mdf = az.from_netcdf(join(data_dir, f'{feature}.nc'))
+else:
+    #ch_effects = pd.read_csv(join(data_dir, f'{freq}_{feature}.csv'))
+    mdf = az.from_netcdf(join(data_dir, f'{freq}_{feature}.nc'))
+ch_effects = az.summary(mdf, var_names='beta|', hdi_prob=.89)
+
+#% reorder according to mne labels
+effect_order = [ix[6:-1] for ix in ch_effects.index]
+
+reindex_array = [np.argmax(eff == names_order_mne[1:]) for eff in effect_order]
+
+eff_mu = ch_effects['mean'].to_numpy()[reindex_array]
+eff_low = ch_effects['hdi_5.5%'].to_numpy()[reindex_array]
+eff_high = ch_effects['hdi_94.5%'].to_numpy()[reindex_array]
+
+stc_parc = (np.concatenate([[eff_mu[0]], eff_mu])) / 4 #on probability scale
+stc_mask_high = (np.concatenate([[eff_low[0]], eff_low])) > 0.185
+stc_mask_low = (np.concatenate([[eff_high[0]], eff_high])) < -0.185
+stc_mask = np.concatenate([i == False for i in [stc_mask_high + stc_mask_low]])
+#stc_mask = np.zeros(stc_parc.shape) == 1
+stc_mask[:2] = np.nan 
+
+
+#%% alpha cf and exponent
 eff_brain = plot_parc(stc_parc, stc_mask, 'magma')
-
-#%%
-df_knee_across = pd.read_csv(join(home_base, 'data/knee_across_brain.csv'))
-
-knee_proba = np.concatenate([[df_knee_across['p(knee > fixed)'][0]], df_knee_across['p(knee > fixed)'].to_numpy()])
-
-#%%
-eff_brain = plot_parc(knee_proba, np.ones(np.shape(knee_proba)) == 0, 'RdBu_r')
-
-#%%
-eff_brain = plot_parc(knee_proba, knee_proba > 0.5, 'Reds')
-
-#%%
-eff_brain = plot_parc(knee_proba, knee_proba < 0.5, 'Reds')
-
-#%%
-
-fig, ax = plt.subplots()
-ax.axis("off")
-
-plt.imshow(eff_brain, cmap='RdBu_r')
-
-cbaxes = inset_axes(plt.gca(), width="6%", height="36%", loc=7, borderpad=-2)
-cbar = plt.colorbar(cax=cbaxes, ax=ax, orientation='vertical')
-cbar.set_label('weights (scaled)')#, rotation=270)
-plt.clim(0, 1)
-#plt.tight_layout()
-plt.show()
-fig.tight_layout()
-
-fig.savefi
+# %%

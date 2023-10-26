@@ -46,7 +46,12 @@ martha_sel = resting_martha_pta.query('external_patient_id == @tinnitus_subs').c
 martha_sel['dB'] = np.nanmean(martha_sel[['hl_r_al_avg', 'hl_l_al_avg']], axis=1)
 martha_sel.columns = ['measurement_age', 'subject_id', 'hl_r', 'hl_l', 'tinnitus_distress', 'dB']
 df_martha_clean = martha_sel[['subject_id', 'measurement_age', 'tinnitus_distress', 'dB']].copy()
-df_martha_clean['tinnitus_distress'] = df_martha_clean['tinnitus_distress'] / 100
+#%% recode tq scores
+df_martha_clean['tq_cat'] = pd.cut(x=df_martha_clean['tinnitus_distress'],
+                                   bins=[0, 30, 46, 59, 84],
+                                   labels=['compensated', 'moderately distressed', 'severly distressed', 'most severly distressed'])
+
+df_martha_clean['tinnitus_distress'] = df_martha_clean['tinnitus_distress'] / 84 * 24#84 = max score on tq 24 = max score on mini-tq
 df_martha_clean['tinnitus_b'] = True
 
 #%%
@@ -164,7 +169,7 @@ for subject in df_tinn['subject_id']:
 #%%
 df_matched = pd.concat([pd.concat(best_match_list, axis=1).T, df_tinn]).reset_index()
 df_matched.drop_duplicates('subject_id', inplace=True, keep='last')
-#df_matched.to_csv('../data/tinnitus_match.csv')
+df_matched.to_csv('../data/tinnitus_match.csv')
 #%%
 fig, ax = plt.subplots()
 
@@ -176,7 +181,7 @@ fig.set_size_inches(4,6)
 ax.set_ylabel('age (years)')
 sns.despine()
 
-fig.savefig('../results/age_match.svg')
+#fig.savefig('../results/age_match.svg')
 
 #%%
 from scipy.stats import mannwhitneyu
@@ -195,7 +200,7 @@ fig.set_size_inches(4,6)
 ax.set_ylabel('Hearing Threshold (dB)')
 sns.despine()
 
-fig.savefig('../results/pta_match.svg')
+#fig.savefig('../results/pta_match.svg')
 
 mannwhitneyu(df_matched.query('tinnitus == True')['dB'].dropna().to_numpy().astype(int),
              df_matched.query('tinnitus == False')['dB'].dropna().to_numpy().astype(int),

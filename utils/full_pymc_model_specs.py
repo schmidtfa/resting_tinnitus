@@ -125,3 +125,59 @@
                 mdf =  pm.sample(**sample_kwargs)
 
         return mdf#, glm
+
+
+#%% multi model bart
+y = df_cmb['tinnitus']
+X = df_cmb[predictors]
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.20, stratify=y)
+
+
+sample_kwargs = {
+                'draws': 2000,
+                'tune': 2000,
+                'chains': 4,
+                }
+
+#%%
+ch_ixs_train, channel = pd.factorize(X_train['ch_name'])
+coords = {
+    "ch_name": channel,
+    "obs_id": np.arange(len(ch_ixs_train)),
+}
+
+ch_ixs_test, channel = pd.factorize(X_test['ch_name'])
+
+#%% model definition
+with pm.Model(coords=coords) as multi_model:
+    # data containers
+    multi_model.add_coord('id', X_train.index, mutable=True)
+    multi_model.add_coord('feature', X_train.drop(columns='ch_name').columns, mutable=True)
+
+    X_s = pm.MutableData('X_s', X_train.drop(columns='ch_name'), dims=('ch_name', 'feature'))
+    y_s = pm.MutableData("y_s", y_train)
+    
+    # add multilevel priors
+    #Hyperpriors
+    a = pm.Normal('intercept', 0, 1.5)
+    sigma_a = pm.Exponential('sigma_intercept', lam=1)
+    b = pm.Normal('beta', 0, 1)
+    sigma_b = pm.Exponential('sigma_beta', lam=1)
+
+    #channel priors centered parametrization -> surprisingly faster than non-centered
+    alpha = pm.Normal('1|', mu=a, sigma=sigma_a, dims="ch_name")
+    beta = pm.Normal('beta|', mu=b, sigma=sigma_b, dims="ch_name")
+
+    # model definiton
+    mu = pmb.BART("mu", X=X_s, Y=y_train, m=50, dims='ch_name')
+    
+    p = pm.Deterministic("p", pm.math.invlogit(alpha[ch_ixs_train] + beta[ch_ixs_train] * mu))
+    
+    # likelihood
+    y = pm.Bernoulli("y_pred", p=p, observed=y_s, dims='obs_id')
+
+#%% training
+with multi_model:
+    # actual training via MCMC
+    idata = pm.sample(**sample_kwargs)

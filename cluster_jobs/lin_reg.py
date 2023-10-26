@@ -127,17 +127,21 @@ class LinReg(Job):
         with pm.Model(coords=coords) as glm:
             #Decided to fit an unpooled model. 
             #Partial Pooling over the brain doesnt seem sensible (maybe within roi)
-            #priors
-            alpha = pm.Normal('1|', mu=0, sigma=1.5, dims="ch_name")
-            beta = pm.Normal('beta|', mu=0, sigma=1, dims="ch_name")
+            
+            #priors (seperately for hurdle and lognormal)
+            alpha = pm.Normal('1|', mu=0, sigma=5, dims="ch_name")
+            beta = pm.Normal('beta|', mu=0, sigma=5, dims="ch_name")
+
+            psi_alpha = pm.Normal('psi_1|', mu=0, sigma=1, dims="ch_name")
+            psi_beta = pm.Normal('psi_beta|', mu=0, sigma=1, dims="ch_name")
 
             #likelihood
             sigma = pm.Exponential('sigma',  lam=1)
-            psi = pm.Uniform('psi', 0.1, 0.9)
+            #psi = pm.Uniform('psi', 0.1, 0.9)
             observed = pm.HurdleLogNormal('tinnitus_distress',
-                                          psi=psi,#pm.math.invlogit(alpha[ch_ixs] + beta[ch_ixs]*zscore(cur_df[feature])),
+                                          psi=pm.math.invlogit(psi_alpha[ch_ixs] + psi_beta[ch_ixs]*zscore(cur_df[feature])),
                                           mu=alpha[ch_ixs] + beta[ch_ixs]*zscore(cur_df[feature]),
-                                          sigma=sigma,
+                                          sigma=np.exp(sigma),
                                           observed=cur_df['tinnitus_distress'],
                                           dims="obs_id")
 

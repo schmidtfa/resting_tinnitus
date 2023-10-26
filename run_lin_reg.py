@@ -11,7 +11,7 @@ job_cluster = ApptainerJobCluster(required_ram='4G',
                          python_bin='/mnt/obob/staff/fschmidt/resting_tinnitus/.venv/bin/python')
 
 feature_list = [ 'theta', 'alpha', 'delta', 'knee_freq', 'beta', 'exponent', 'offset', 'gamma', 'n_peaks']
-feature_list = ['exponent'],#'gamma', 'offset',]
+#feature_list = ['exponent', 'offset', 'gamma', 'n_peaks']
 
 df_all = pd.read_csv('/mnt/obob/staff/fschmidt/resting_tinnitus/data/tinnitus_match.csv')
 subject_ids = list(df_all['subject_id'].unique())

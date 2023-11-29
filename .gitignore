@@ -1,5 +1,7 @@
 data/
 jobs/
+old/
+results/
 .DS_Store
 .venv
 .ipynb_checkpoints

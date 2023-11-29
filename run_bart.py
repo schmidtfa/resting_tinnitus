@@ -7,6 +7,7 @@ import pandas as pd
 job_cluster = JobCluster(required_ram='10G',
                          request_time=1000,
                          request_cpus=4,
+                         exclude_nodes='scs1-7,scs1-8,scs1-9,scs1-10,scs1-12,scs1-13,scs1-14',
                          #apptainer_image='oras://ghcr.io/thht/obob-singularity-container/xfce_desktop_minimal_bullseye:latest',
                          python_bin='/mnt/obob/staff/fschmidt/resting_tinnitus/.venv/bin/python')
 
@@ -19,7 +20,7 @@ tree_list = [50, 100, 150, 200]
 import numpy as np
 from os import listdir
 
-n_trees = 50
+n_trees = 100
 OUTDIR = f'/mnt/obob/staff/fschmidt/resting_tinnitus/data/bart/n_trees_{n_trees}'
 outfiles = listdir(OUTDIR)
 
@@ -44,6 +45,7 @@ chs = list(set(c_chs))
 #% put in jobs...
 job_cluster.add_job(BART,
                     cur_ch=PermuteArgument(chs),
+                    
                     n_trees=n_trees
                     )
 #%% submit...

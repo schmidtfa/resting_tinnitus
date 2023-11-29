@@ -12,9 +12,10 @@ import seaborn as sns
 
 sns.set_style('ticks')
 sns.set_context('poster')
-# %%
 
-INDIR = '/mnt/obob/staff/fschmidt/resting_tinnitus/data/bart/n_trees_50_old'
+
+n_trees = 200
+INDIR = f'/mnt/obob/staff/fschmidt/resting_tinnitus/data/bart/n_trees_{n_trees}'
 
 
 df_cmb = pd.read_csv('/mnt/obob/staff/fschmidt/resting_tinnitus/data/tinnitus_all_spec_features.csv')
@@ -23,47 +24,83 @@ n_folds = np.arange(5)
 
 var_name = 'p'
 
-cur_ch = chs[0]
+#%%
+importance_dict, diagnostics_dict, acc_dict = {}, {}, {}
+
+diag_list, acc_list, loo_list = [], [], []
+
+for cur_ch in chs:
 
 
+    ess_l, rhat_l, loo_l = [], [], [] 
+    y_pred_l, y_test_l = [], []
+    inf_list = []
+    for cur_fold in n_folds:
+        #cur_fold = n_folds[0]
+        cur_file = az.from_netcdf(join(INDIR, f'{cur_ch}_fold_{cur_fold}.nc'))
+
+        #%data for diagnostics plot
+        ess_l.append(np.atleast_2d(az.ess(cur_file, method="bulk", var_names=var_name)[var_name].values))
+        rhat_l.append(np.atleast_2d(az.rhat(cur_file, var_names=var_name)[var_name].values))
+
+        #% loo scores 2 compare
+        loo_l.append(az.loo(cur_file)[0])
+
+        #% variable importance (concatenated HDIs)
+
+        #% decoding accuracy 
+        y_pred_l.append(cur_file.posterior_predictive.y_pred.mean(['draw', 'chain']) > 0.5)
+        y_test_l.append(cur_file.observed_data.y_test_set.to_numpy())
 
 
+    #% add loos
+    loo_list.append(pd.DataFrame({'ch_name': cur_ch,
+                                  'n_trees': n_trees,
+                                  'elpd': np.array(loo_l)}))
+
+    #% add diagnostics
+    rhat = np.concatenate(rhat_l, axis=1).flatten()
+    ess = np.concatenate(ess_l, axis=1).flatten()
+
+    diag_list.append(pd.DataFrame({'rhat': rhat,
+                                   'ess': ess,
+                                  'ch_name': cur_ch}))
+
+    #% add decoding df
+    acc_list.append(pd.DataFrame({'y_pred': np.concatenate(y_pred_l),
+                                  'y_test': np.concatenate(y_test_l),
+                                  'ch_name': cur_ch}))
 
 
 #%%
-diagnostics_dict = {}
 
-ess_l, rhat_l = [], [] 
-inf_list = []
-for cur_fold in n_folds:
-    #cur_fold = n_folds[0]
+df_diag = pd.concat(diag_list)
+diag_rhat_max = df_diag.groupby('ch_name').max().reset_index()
+diag_ess_min = df_diag.groupby('ch_name').min().reset_index()
+diag_ave = df_diag.groupby('ch_name').mean().reset_index()
 
-    cur_file = az.from_netcdf(join(INDIR, f'{cur_ch}_fold_{cur_fold}.nc'))
-
-    inf_list.append(cur_file)
-
-
-
-
-
-
-
-    #%data for diagnostics plot
-    ess_l.append(np.atleast_2d(az.ess(cur_file, method="bulk", var_names=var_name)[var_name].values))
-    rhat_l.append(np.atleast_2d(az.rhat(cur_file, var_names=var_name)[var_name].values))
-
-#%%
-az.concat(inf_list, dim='draw')
+good_rhats = set(diag_rhat_max[diag_rhat_max['rhat'] < 1.05]['ch_name'].to_list())
+good_ess = set(diag_ess_min[diag_ess_min['ess'] > 400]['ch_name'].to_list())
 
 
 #%%
-plt.hist(np.concatenate(ess_l, axis=1).flatten());
+ch_list = list(good_rhats.intersection(good_ess))
+
+#%% check acc for ok channels
+df_acc = pd.concat(acc_list)
+
+df_acc['acc'] = df_acc['y_pred'] == df_acc['y_test']
+
+mean_acc = df_acc.groupby('ch_name').mean()['acc']
+std_acc = df_acc.groupby('ch_name').std()['acc']
 
 #%%
-rhat = np.concatenate(rhat_l, axis=1).flatten()
-ess = np.concatenate(ess_l, axis=1).flatten()
+#plt.scatter(mean_acc, diag_ave['ess'])
 
+mean_acc.reset_index().query('ch_name == @ch_list').hist()
 
+#%%
+(df_acc['y_pred'] == df_acc['y_test']).mean()
 #%% R-hat plot function
 def plot_rhat(rhat, ess):
     g = az.plot_ecdf(rhat)
@@ -76,9 +113,9 @@ def plot_rhat(rhat, ess):
     return g
 
 def plot_ess(ess):
-    g = plt.hist(ess)
+    g = plt.hist(ess, bins=50)
     sns.despine()
-    g.set_xlabel('ESS (Bulk)')
+    g.set_xlabel('Effective Sample Size')
     g.set_ylabel('Count')
     return g
 
@@ -86,10 +123,15 @@ def plot_ess(ess):
 #plot_ess(ess)
 
 #%%
-plot_rhat(rhat, ess)
+df_diag = pd.concat(diag_list)
+
+plot_rhat(df_diag['rhat'], df_diag['ess'])
+
+#%%
+plot_ess(df_diag['ess'])
 #%% data for classification accuracy
 
-
+(df_diag.groupby('ch_name').mean()['rhat'] > 1.01).sum()
 
 #%% get variable importance
 ev_mean = np.zeros(len(var_imp))

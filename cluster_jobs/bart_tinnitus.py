@@ -30,13 +30,11 @@ class BART(Job):
 
         predictors = ['offset', 
                     'exponent', 
-                    #'knee_freq', 
                     'n_peaks', 
-                    'delta_osc',#'delta_cf', 'delta_pw','delta_bw',
-                    'theta_osc', #'theta_cf', 'theta_pw','theta_bw',
-                    'alpha_osc', 'alpha_cf', 'alpha_pw', #'alpha_bw',
-                    'beta_osc', 'beta_cf', 'beta_pw',# 'beta_bw',
-                    'gamma_osc', #'gamma_cf', 'gamma_pw','gamma_bw', 
+                    'theta_cf', 'theta_pw',
+                    'alpha_cf', 'alpha_pw', #'alpha_bw',
+                    'beta_cf', 'beta_pw',# 'beta_bw',
+                    'gamma_cf', 'gamma_pw',#'gamma_bw', 
                     #'ch_name'
                     ]
 

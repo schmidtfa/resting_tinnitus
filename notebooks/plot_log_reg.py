@@ -32,7 +32,7 @@ if local:
 else:
     home_base = '/mnt/obob/staff/fschmidt/resting_tinnitus'
 
-data_dir = join(home_base, 'data/log_reg/')#final_new_pool_3/')
+data_dir = join(home_base, 'data/log_reg_final/')#final_new_pool_3/')
 
 trans_path = 'data/headmodels/'
 mri_path = 'data/freesurfer/'
@@ -50,6 +50,8 @@ names_order_mne = np.array([label.name[:-3] for label in labels_mne])
 rh = [True if label.hemi == 'rh' else False for label in labels_mne]
 lh = [True if label.hemi == 'lh' else False for label in labels_mne]
 
+
+#%%
 def plot_parc(stc_parc, stc_mask, cmap, parc='HCPMMP1'):
 
     mpl.use('Qt5Agg')
@@ -102,7 +104,9 @@ def plot_parc(stc_parc, stc_mask, cmap, parc='HCPMMP1'):
         vtx_data = cur_stc_ordered[labels]
         vtx_data[labels == -1] = -1
 
-        brain.add_data(vtx_data, hemi=hemi, fmin=stc_parc.min(), #fmid=1,
+        brain.add_data(vtx_data, hemi=hemi, 
+                       fmin=stc_parc.min(), 
+                       fmid=0,
                        fmax=stc_parc.max(), 
                        colormap=cmap, #np.nanmax(stc_parc)
                        colorbar=False, alpha=.8)
@@ -120,37 +124,47 @@ def plot_parc(stc_parc, stc_mask, cmap, parc='HCPMMP1'):
 #%%
 #tinnitus ~ (1 + exponent|channel)
 
-#%%
-
 #%% get data from model
-feature = 'offset'
-freq = 'gamma'
+feature = 'exponent'
+freq = 'alpha'
+model_type = 'up'
 
 if feature in ['exponent', 'offset', 'knee_freq', 'n_peaks']:
     #ch_effects = pd.read_csv(join(data_dir, f'{feature}.csv'))
-    mdf = az.from_netcdf(join(data_dir, f'{feature}.nc'))
+    #nc_datasets = list(Path(data_dir).glob(f'{feature}*.nc'))
+    mdf = az.from_netcdf(join(data_dir, f'{feature}_{model_type}.nc'))
 else:
     #ch_effects = pd.read_csv(join(data_dir, f'{freq}_{feature}.csv'))
-    mdf = az.from_netcdf(join(data_dir, f'{freq}_{feature}.nc'))
-ch_effects = az.summary(mdf, var_names='beta|', hdi_prob=.89)
+    #nc_datasets = list(Path(data_dir).glob(f'{freq}_{feature}*.nc'))
+    mdf = az.from_netcdf(join(data_dir, f'{freq}_{feature}_{model_type}.nc'))
 
-#% reorder according to mne labels
-effect_order = [ix[6:-1] for ix in ch_effects.index]
+ch_effects = az.summary(mdf, var_names='beta_ch', hdi_prob=.89)
+    
 
-reindex_array = [np.argmax(eff == names_order_mne[1:]) for eff in effect_order]
+
+
+#%% reorder according to mne labels
+effect_order = [ix[8:-1] for ix in ch_effects.index]
+
+reindex_array = [np.argmax(eff == names_order_mne[2:]) for eff in effect_order]
 
 eff_mu = ch_effects['mean'].to_numpy()[reindex_array]
 eff_low = ch_effects['hdi_5.5%'].to_numpy()[reindex_array]
 eff_high = ch_effects['hdi_94.5%'].to_numpy()[reindex_array]
 
-stc_parc = (np.concatenate([[eff_mu[0]], eff_mu])) / 4 #on probability scale
-stc_mask_high = (np.concatenate([[eff_low[0]], eff_low])) > 0.185
-stc_mask_low = (np.concatenate([[eff_high[0]], eff_high])) < -0.185
+stc_parc = np.exp(eff_mu) #as log-odds
+stc_mask_high = eff_low > 0.185
+stc_mask_low = eff_high < -0.185
 stc_mask = np.concatenate([i == False for i in [stc_mask_high + stc_mask_low]])
-#stc_mask = np.zeros(stc_parc.shape) == 1
-stc_mask[:2] = np.nan 
+stc_mask = np.zeros(stc_parc.shape) == 1
+stc_mask = np.concatenate((np.array([True, True]), stc_mask)) 
+stc_parc = np.concatenate((np.array([0, 0]), stc_parc)) 
 
-
-#%% alpha cf and exponent
-eff_brain = plot_parc(stc_parc, stc_mask, 'magma')
+#%% alpha pw and exponent
+eff_brain = plot_parc(stc_parc, stc_mask, 'RdBu_r')
+# %%
+#%%
+%matplotlib inline
+az.plot_trace(mdf)
+plt.tight_layout()
 # %%

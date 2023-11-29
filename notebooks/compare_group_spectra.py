@@ -26,6 +26,8 @@ mpl.rcParams.update(new_rc_params)
 
 local = True
 
+no_knee = True #knee modeling seems to make not too much sense given there are mostly no knees after beamforming
+
 if local:
     home_base = '/Users/b1059770/Library/Group Containers/G69SCX94XU.duck/Library/Application Support/duck/Volumes.noindex/bomber/resting_tinnitus'
 else:
@@ -61,7 +63,7 @@ no_tin_c = cmap[0]
 
 
 #%%
-all_files = list(Path(join(home_base, 'data/specparam')).glob(f'*/*__peak_threshold_2.5__freq_range_[[]0.25, 98[]].dat'))
+all_files = list(Path(join(home_base, 'data/specparam_3')).glob(f'*/*__peak_threshold_2__freq_range_[[]0.25, 98[]].dat'))
 
 # %%
 periodic, aperiodic = [], []
@@ -144,17 +146,24 @@ df2plot[cur_param].max()
 df2plot[cur_param].min()
 
 #%% select knee channels
-knee_settings = joblib.load(join(home_base, 'data/knee_settings.dat'))
-knee_chans = knee_settings['knee']
-fixed_chans = knee_settings['fixed']
 
-df_ap_new = pd.concat([df_ap.query("ch_name == @knee_chans").query('aperiodic_mode == "knee"'),
-                    df_ap.query("ch_name == @fixed_chans").query('aperiodic_mode == "fixed"')])
+if no_knee:
+
+    df_ap_new = df_ap.query('aperiodic_mode == "fixed"')
+
+else:
+
+    knee_settings = joblib.load(join(home_base, 'data/knee_settings.dat'))
+    knee_chans = knee_settings['knee']
+    fixed_chans = knee_settings['fixed']
+
+    df_ap_new = pd.concat([df_ap.query("ch_name == @knee_chans").query('aperiodic_mode == "knee"'),
+                        df_ap.query("ch_name == @fixed_chans").query('aperiodic_mode == "fixed"')])
 
 #%% plot some histograms
 #start with tinnitus distress distribution
 tinn_distress = df_ap_new.drop_duplicates('subject_id').query('tinnitus == True')[['subject_id', 'tinnitus_distress']]
-
+%matplotlib inline
 
 fig, ax = plt.subplots(figsize=(4,4))
 ax.hist(tinn_distress['tinnitus_distress'], bins=15, density=False, color=tin_c,)
@@ -164,7 +173,7 @@ sns.despine()
 fig.savefig(f'../results/tinnitus_distress_hist.svg')
 
 #%% 
-%matplotlib inline
+
 
 fig, ax = plt.subplots(figsize=(4,4))
 
@@ -196,16 +205,25 @@ fig.savefig(f'../results/exponent_hist_no_tinnitus.svg')
 
 #%% knee freq
 
-fig, ax = plt.subplots(figsize=(4,4))
+if no_knee == False:
 
-ax.hist(df_ap_new.query('tinnitus == False')['knee_freq'], color=no_tin_c, edgecolor=no_tin_c, bins=20)
-ax.set_ylabel('Count')
-ax.set_xlabel('Knee Frequency (Hz)')
-ax.set_xlim(0, 50)
-#ax.set_ylim(0, 100)
-#ax.set_yscale('log')
-sns.despine()
-fig.savefig(f'../results/knee_freq_hist_no_tinnitus.svg')
+    knee_settings = joblib.load(join(home_base, 'data/knee_settings.dat'))
+    knee_chans = knee_settings['knee']
+    fixed_chans = knee_settings['fixed']
+
+    df_ap_2 = pd.concat([df_ap.query("ch_name == @knee_chans").query('aperiodic_mode == "knee"'),
+                        df_ap.query("ch_name == @fixed_chans").query('aperiodic_mode == "fixed"')])
+
+    fig, ax = plt.subplots(figsize=(4,4))
+
+    ax.hist(df_ap_2.query('tinnitus == False')['knee_freq'], color=no_tin_c, edgecolor=no_tin_c, bins=20)
+    ax.set_ylabel('Count')
+    ax.set_xlabel('Knee Frequency (Hz)')
+    ax.set_xlim(0, 50)
+    #ax.set_ylim(0, 100)
+    #ax.set_yscale('log')
+    sns.despine()
+    fig.savefig(f'../results/knee_freq_hist_no_tinnitus.svg')
 
 
 #%% offset
@@ -224,7 +242,7 @@ fig.savefig(f'../results/offset_hist_no_tinnitus.svg')
 #%% plot aperiodic activity on parcellation
 df_ap_g = df_ap_new.groupby('ch_name').mean()
 #%%
-cur_param = "exponent"
+cur_param = "offset"
 tinnitus = False
 
 df2plot = df_ap_new.query(f'tinnitus == {tinnitus}').groupby('ch_name').mean().reset_index()
@@ -286,7 +304,14 @@ df2plot[cur_param].max()
 df_cf = df_p.query('peak_params == "cf"')
 
 
-df_cf_new = pd.concat([df_cf.query("ch_name == @knee_chans").query('aperiodic_mode == "knee"'),
+if no_knee:
+
+    df_cf_new = df_cf.query('aperiodic_mode == "fixed"')
+
+else:
+
+
+    df_cf_new = pd.concat([df_cf.query("ch_name == @knee_chans").query('aperiodic_mode == "knee"'),
                     df_cf.query("ch_name == @fixed_chans").query('aperiodic_mode == "fixed"')])
 
 #remove line frequency peak from oscillations
@@ -302,7 +327,7 @@ fig, ax = plt.subplots(figsize=(4,4))
 ax.hist(df_cf_new.query('tinnitus == False')['n_peaks'], color=no_tin_c, edgecolor=no_tin_c, bins=10)
 ax.set_ylabel('Count')
 ax.set_xlabel('# Peaks')
-ax.set_xlim(0, 10)
+ax.set_xlim(0, 6)
 #ax.set_ylim(0, 8000)
 sns.despine()
 fig.savefig(f'../results/n_peaks_hist_no_tinnitus.svg')
@@ -327,10 +352,22 @@ fig.savefig(f'../results/cf_hist_no_tinnitus.svg')
 # %% plot periodic power
 
 df_pw = df_p.query('peak_params == "pw"')
-df_pw_new = pd.concat([df_pw.query("ch_name == @knee_chans").query('aperiodic_mode == "knee"'),
+
+if no_knee:
+
+    df_pw_new = df_pw.query('aperiodic_mode == "fixed"')
+
+else:
+    df_pw_new = pd.concat([df_pw.query("ch_name == @knee_chans").query('aperiodic_mode == "knee"'),
                     df_pw.query("ch_name == @fixed_chans").query('aperiodic_mode == "fixed"')])
 df_cf = df_p.query('peak_params == "cf"')
-df_cf_new = pd.concat([df_cf.query("ch_name == @knee_chans").query('aperiodic_mode == "knee"'),
+
+if no_knee:
+
+    df_cf_new = df_cf.query('aperiodic_mode == "fixed"')
+
+else:
+    df_cf_new = pd.concat([df_cf.query("ch_name == @knee_chans").query('aperiodic_mode == "knee"'),
                     df_cf.query("ch_name == @fixed_chans").query('aperiodic_mode == "fixed"')])
 
 df_pw_new.reset_index()[['delta', 'theta', 'alpha', 'beta', 'gamma']]

@@ -23,8 +23,8 @@ sample_kwargs = {'draws': 1000,
 
 
 # %%
-INDIR = '/mnt/obob/staff/fschmidt/resting_tinnitus/data/specparam'
-all_files = list(Path('/mnt/obob/staff/fschmidt/resting_tinnitus/data/specparam').glob(f'*/*__peak_threshold_2.5__freq_range_[[]0.25, 98[]].dat'))
+INDIR = '/mnt/obob/staff/fschmidt/resting_tinnitus/data/specparam_3'
+all_files = list(Path('/mnt/obob/staff/fschmidt/resting_tinnitus/data/specparam_3').glob(f'*/*__peak_threshold_2__freq_range_[[]0.25, 98[]].dat'))
 
 
 # %%
@@ -48,6 +48,12 @@ physio = ['ECG', 'EOGV', 'EOGH']
 df_ap_physio = df_aperiodic.query('ch_name == @physio')
 
 
+#%%
+df_regions_info = pd.read_csv('../data/regions_hcmp.csv')
+df_regions_info['ch_name'] = [region[-1] + '_' + region[:-2] + '_ROI' for region in df_regions_info['regionName']]
+df_regions_info['ch_name'] = df_regions_info['ch_name'].replace({'L_7Pl_ROI': 'L_7PL_ROI',
+                                                                 'R_7Pl_ROI': 'R_7PL_ROI',})
+#%%
 import sys
 sys.path.append('/mnt/obob/staff/fschmidt/resting_tinnitus/utils')
 
@@ -76,96 +82,23 @@ sns.catplot(data=df_ap_physio, y='exponent', **cat_plot_kwargs)
 ch_name = 'EOGV'
 
 md = bmb.Model(data=df_ap_physio.query(f'ch_name == "{ch_name}"'),
-         formula='tinnitus ~ 1 + scale(offset)',
+         formula='tinnitus ~ 1 + scale(exponent)',
          dropna=True,
          family='bernoulli',
          link='logit'
          )
 
-#mdf = md.fit()
+mdf = md.fit()
 
 #%%
-#az.summary(mdf)
-
-
-
+az.summary(mdf)
 
 #%%
 
 
-
-
-
-
-
-
-
-
-
-# %%
-# statistical model:  tinnitus ~ 1 + feature (e.g. exponent) + (1|ch_name)
-import pytensor.tensor as pt
-
-df_ap_brain = df_aperiodic.query('ch_name != @physio')
-df_ap_brain = knee_or_fixed(df_ap_brain)
-
-
-cur_df = df_ap_brain[['knee_modeled', 'tinnitus', 'ch_name']].dropna()
 #%%
-ch_ixs, channel = pd.factorize(cur_df['ch_name'])
-coords = {
-    "ch_name": channel,
-    "obs_id": np.arange(len(ch_ixs)),
-}
+cur_df = knee_or_fixed(df_aperiodic.query('ch_name != @physio'))
 
-with pm.Model(coords=coords) as glm:
-
-    mu_a = pm.Normal('intercept', 0, 1.5)
-    z_a = pm.Normal('z_a', 0, 1.5, dims="ch_name")
-    sigma_a = pm.Exponential('sigma_intercept', lam=0.5)
-
-
-    mu_b = pm.Normal('beta', 0, 1.)
-    z_b = pm.Normal('z_b', 0, 1., dims="ch_name")
-    sigma_b = pm.Exponential('sigma_beta', lam=0.5)
-
-    # #model correlation of predictors -> this will be needed to incorporate ecg and eog
-    # chol, corr, stds = pm.LKJCholeskyCov(
-    # "chol", n=2, eta=4.0, sd_dist=pm.Exponential.dist(1.0, shape=2)
-    # )
-    # z    = pm.Normal('z',0,1,shape=(len(channel),2)) #vals_raw in pymc docs
-    # v    = pm.Deterministic('v', pt.dot(chol,z.T).T) #vals in pymc docs
-    
-
-    alpha = pm.Deterministic('1|', (mu_a + z_a * sigma_a), dims="ch_name") # + v[:,0]
-    beta = pm.Deterministic('beta|', (mu_b + z_b * sigma_b), dims="ch_name") # + v[:,1]
-
-    #likelihood
-    observed = pm.Bernoulli('tinnitus',
-                            p=pm.math.invlogit(alpha[ch_ixs]),# + beta[ch_ixs]*zscore(cur_df[feature])),
-                            observed=cur_df['knee_modeled'],
-                            dims="obs_id")
-
-    #mdf = pm.sample(**sample_kwargs)
-
-
-
-#%%
-with glm:
-    mdf = pm.sample(**sample_kwargs)
-
-#%%
-#%%
-sum = az.summary(mdf, var_names=['1|'])
-
-#%%
-(np.exp(sum['hdi_3%']) > 1).sum()
-
-#%%
-(np.exp(sum['hdi_97%']) < 1).sum()
-
-
-#%%
 ave_knee = cur_df.groupby('ch_name').mean()['knee_modeled']
 
 #%%
@@ -194,11 +127,59 @@ mdf = md.fit()
 
 
 #%%
-knee_chans = knee_settings['knee']
-fixed_chans = knee_settings['fixed']
 
-pd.concat([df_aperiodic.query("ch_name == @knee_chans").query('aperiodic_mode == "knee"'),
-           df_aperiodic.query("ch_name == @fixed_chans").query('aperiodic_mode == "fixed"')])
+df_ap_brain = df_aperiodic.query('ch_name != @physio')
+
+df_cmb = df_ap_brain.merge(df_regions_info, on='ch_name').query('aperiodic_mode == "fixed"')
+
+feature = 'exponent'
+
+cur_df = df_cmb[[feature, 'tinnitus', 'ch_name', 'cortex']].dropna()
+
+cortex_ixs, cortices = pd.factorize(cur_df['cortex'])
+ch_ixs, channel = pd.factorize(cur_df['ch_name'])
+coords = {
+    "ch_name": channel,
+    "cortices": cortices,
+    "obs_id": np.arange(len(ch_ixs)),
+}
+#ch_ixs, cortices = pd.factorize(cur_df['cortex'])
+
+
+#%%
+with pm.Model(coords=coords) as glm:
+
+
+    mu_a = pm.Normal('intercept', 0, 1.5, dims='cortices')
+    z_a = pm.Normal('z_a', 0, 1.5, dims="ch_name")
+    sigma_a = pm.Exponential('sigma_intercept', lam=1)
+
+
+    mu_b = pm.Normal('beta', 0, 1, dims='cortices')
+    z_b = pm.Normal('z_b', 0, 1, dims="ch_name")
+    sigma_b = pm.Exponential('sigma_beta', lam=1)
+
+    #channel priors centered parametrization -> surprisingly faster than non-centered
+    alpha = pm.Deterministic('1|', mu_a + z_a * sigma_a, dims="ch_name")
+    beta = pm.Deterministic('beta|', mu_b + z_b * sigma_b, dims="ch_name")
+
+
+    #likelihood
+    observed = pm.Bernoulli('tinnitus',
+                            p=pm.math.invlogit(alpha[ch_ixs] + beta[ch_ixs]*zscore(cur_df[feature])),
+                            observed=cur_df['tinnitus'],
+                            dims="obs_id")
+
+    #mdf = sample_numpyro_nuts(**sample_kwargs)
+    mdf =  pm.sample(**sample_kwargs)
+
+
+
+
+
+
+
+
 
 
 #%%

@@ -5,6 +5,7 @@ import joblib
 import pandas as pd
 import scipy.signal as dsp
 from neurodsp.spectral import compute_spectrum_welch
+from neurodsp.aperiodic.irasa import compute_irasa
 
 import sys
 sys.path.append('/mnt/obob/staff/fschmidt/resting_tinnitus/utils')
@@ -13,11 +14,6 @@ from src_utils import raw2source
 import mne
 import numpy as np
 from os.path import join
-
-
-
-import random
-random.seed(42069) #make it reproducible - sort of
 
 #%%
 
@@ -32,7 +28,8 @@ class PreprocessingJob(Job):
             h_pass = 0.1,
             notch = False,
             do_ica = True,
-            sgramm=False,
+            fft_method=False,
+            src_type='beamformer',
             downsample_f = 1000, #make sure that the 10 or 5k data is also at 1k
             ica_threshold = 0.5,
             duration=4):
@@ -40,7 +37,7 @@ class PreprocessingJob(Job):
 
         #%% debug
         # subject_id = '19891222gbhl'
-        # l_pass = None
+        # l_pass = 98
         # h_pass = 1
         # notch = False
         # do_ica = False
@@ -85,7 +82,7 @@ class PreprocessingJob(Job):
         preproc_settings['do_ica'] = False
         subjects_dir = '/mnt/obob/staff/fschmidt/resting_tinnitus/data/freesurfer'
 
-        stc = raw2source(raw, subject_id, subjects_dir, preproc_settings)
+        stc = raw2source(raw, subject_id, subjects_dir, preproc_settings, src_type=src_type)
 
         #% get tc from parcellation and return
         fs_path = join(subjects_dir, 'fsaverage')
@@ -103,7 +100,7 @@ class PreprocessingJob(Job):
                       'parc': 'HCPMMP1',
                       'names_order_mne': names_order_mne}
         
-        if sgramm:
+        if fft_method == 'sgramm':
                 sgramm_settings = {'fs':fs,
                                    'window': 'hann',
                                    'nperseg': int(fs*duration), 
@@ -120,7 +117,28 @@ class PreprocessingJob(Job):
                 
                 _, _, data_dict['label_tc'] = dsp.spectrogram(label_tc, **sgramm_settings)
 
-        else:
+        elif fft_method == 'multitaper':
+                from mne.time_frequency import psd_array_multitaper
+
+                #remove last samples to make clearly divisible
+                trl_len = int(fs*duration)
+                max_len = eog.shape[1] - eog.shape[1] % trl_len 
+
+                eog_psd, freq = psd_array_multitaper(eog[:,:max_len].reshape(eog.shape[0], -1, trl_len), sfreq=fs, bandwidth=2)
+                ecg_psd, _ = psd_array_multitaper(ecg[:,:max_len].reshape(ecg.shape[0], -1, trl_len), sfreq=fs, bandwidth=2)
+                stc_tmp, _ = psd_array_multitaper(stc.data[:,:max_len].reshape(stc.data.shape[0], -1, trl_len), sfreq=fs, bandwidth=2)
+
+                #average
+                eog_psd = eog_psd.mean(axis=1)
+                ecg_psd = ecg_psd.mean(axis=1)
+                stc.data = stc_tmp.mean(axis=1)
+
+                label_tc = mne.extract_label_time_course(stc, labels_mne, src, mode='mean')
+
+                data_dict = {'label_tc': label_tc,
+                             'label_info': label_info}
+
+        elif fft_method == 'welch':
                 freq, eog_psd = compute_spectrum_welch(eog, **welch_settings)
                 _, ecg_psd = compute_spectrum_welch(ecg, **welch_settings)
                 _, stc.data = compute_spectrum_welch(stc.data, **welch_settings) 
@@ -130,6 +148,33 @@ class PreprocessingJob(Job):
                 data_dict = {'label_tc': label_tc,
                              'label_info': label_info}
 
+        elif fft_method == 'irasa':
+
+                welch_settings = {'fs': fs, 
+                        'avg_type':'median',
+                        'window': 'hann',
+                        'nperseg': fs*duration,
+                        'noverlap': fs*duration / 2, #50% overlap as default
+                        #'f_range': (0.25, 98)
+                        }
+                freq, eog_psd_ap, eog_psd_p = compute_irasa(eog, **welch_settings)
+                _, ecg_psd_ap, ecg_psd_p = compute_irasa(ecg, **welch_settings)
+
+                eog_psd = {'periodic': eog_psd_p,
+                           'aperiodic': eog_psd_ap}
+                
+                ecg_psd = {'periodic': ecg_psd_p,
+                           'aperiodic': ecg_psd_ap}
+
+                stc_2 = stc.copy()
+                _, stc.data, stc_2.data = compute_irasa(stc.data, **welch_settings) 
+
+                label_tc_ap = mne.extract_label_time_course(stc, labels_mne, src, mode='mean')
+                label_tc_p = mne.extract_label_time_course(stc_2, labels_mne, src, mode='mean')
+
+                data_dict = {'label_tc_ap': label_tc_ap,
+                             'label_tc_p': label_tc_p,
+                             'label_info': label_info}
 
         #%%
         data = {'subject_info': df,

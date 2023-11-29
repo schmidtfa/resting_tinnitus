@@ -19,25 +19,27 @@ random.seed(42069) #make it reproducible - sort of
 
 class Specparam(Job):
 
-    job_data_folder = 'specparam'
+    job_data_folder = 'specparam_full_spectra'
 
     def run(self,
             subject_id,
             aperiodic_mode,
             freq_range=(0.5, 100),
-            max_n_peaks=10,
+            max_n_peaks=6,
             min_peak_height=0,
             peak_threshold=2,
             ):
 
-        # #%%debug
+        #%%debug
         # subject_id = '19990822mrae'
-        # aperiodic_mode = 'knee'
-        # freq_range=(0.5, 100)
-        # max_n_peaks=10
+        # aperiodic_mode = 'fixed'
+        # freq_range=(0.25, 98)
+        # max_n_peaks=2
+        # min_peak_height=0
+        # peak_threshold=2
 
         INDIR = '/mnt/obob/staff/fschmidt/resting_tinnitus/data/data_meg'
-        cur_data = joblib.load(list(Path(INDIR).glob(f'{subject_id}/{subject_id}__sgramm_False.dat'))[0])
+        cur_data = joblib.load(list(Path(INDIR).glob(f'{subject_id}/{subject_id}__src_type_beamformer.dat'))[0])
 
         #define some bands
         bands = Bands({ 'delta' : [1, 3],
@@ -48,7 +50,7 @@ class Specparam(Job):
                         'line_noise': [49, 51]})
 
         #%%
-        periodic_list, aperiodic_list = [],[]
+        periodic_list, aperiodic_list, spectra_list = [],[],[]
 
         for key in ['ecg', 'eog', 'src']:
 
@@ -69,7 +71,7 @@ class Specparam(Job):
                 data2fooof = cur_data['src']['label_tc']
 
             #% do some spectral parametrization
-            fg = FOOOFGroup(peak_width_limits=(0.5,4), #more doesnt really make sense to me
+            fg = FOOOFGroup(peak_width_limits=(0.5,6), #more doesnt really make sense to me
                             max_n_peaks=max_n_peaks, #this uses my fooof version with bic -> i.e. best model combination between parsimony and complexity is picked
                             aperiodic_mode=aperiodic_mode,
                             peak_threshold=peak_threshold,
@@ -77,6 +79,8 @@ class Specparam(Job):
                             verbose=False) #otherwise log-files > 40gb
 
             fg.fit(cur_data['freq'], data2fooof, freq_range=freq_range)
+
+            spectra_list.append(self._extract_spectra(fg, key, ch_names))
             
             #% get band specific information
             df_periodic = self._get_band_peak_df(fg, bands, ch_names)
@@ -109,8 +113,10 @@ class Specparam(Job):
             data.update({key: df.merge(sub_info, on='subject_id')})
 
         #save
+        data.update({'full_spectra': spectra_list})
         data['freq'] = cur_data['freq']
         data['label_info'] = cur_data['src']['label_info']
+
 
         joblib.dump(data, self.full_output_path)
 
@@ -161,5 +167,23 @@ class Specparam(Job):
         else:
             df_ap['ch_name'] = ch_names
         return df_ap
+
+
+
+    def _extract_spectra(self, fg, key, ch_names):
+
+        """Extract full periodic and aperiodic model fits"""
+        
+        peaks, aps = {}, {}
+
+        for ix, cur_ch in enumerate(ch_names):
+
+            aps.update({cur_ch : fg.get_fooof(ix).get_model(component='aperiodic', space='log')})
+            peaks.update({cur_ch : fg.get_fooof(ix).get_model(component='peak', space='log')})
+
+        spectra = {key: {'aperiodic': aps,
+                         'periodic': peaks}}
+
+        return spectra
 
 # %%

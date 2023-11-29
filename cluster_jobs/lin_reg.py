@@ -36,8 +36,8 @@ class LinReg(Job):
                             'chains': 4,
                             'target_accept': 0.95,}
 
-            all_files = list(Path('/mnt/obob/staff/fschmidt/resting_tinnitus/data/specparam').glob(f'*/*__peak_threshold_2.5__freq_range_[[]{low_freq}, {up_freq}[]].dat'))
-            #%%
+            all_files = list(Path('/mnt/obob/staff/fschmidt/resting_tinnitus/data/specparam_3').glob(f'*/*__peak_threshold_2__freq_range_[[]{low_freq}, {up_freq}[]].dat'))
+            
             periodic, aperiodic = [], []
 
             for f in all_files:

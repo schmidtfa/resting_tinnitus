@@ -57,9 +57,9 @@ data_dir = join(home_base, 'data/log_reg/')
 #%% get data from model
 feature_dict = {'offset': None,
                 'exponent': None,
-                'knee_freq': None,
+                #'knee_freq': None,
                 'n_peaks': None,
-                'delta': ['cf', 'pw'],
+                #'delta': ['cf', 'pw'],
                 'theta': ['cf', 'pw'],
                 'alpha': ['cf', 'pw'],
                 'beta': ['cf', 'pw'],
@@ -85,12 +85,12 @@ for key, val in feature_dict.items():
 # %%
 eff_df_cmb = pd.concat(all_summaries)
 # %%
-eff_df_cmb['positive effect'] = eff_df_cmb['hdi_5.5%'] > 0.18
-eff_df_cmb['negative effect'] = eff_df_cmb['hdi_94.5%'] < -0.18
-eff_df_cmb['null effect'] = np.logical_and(eff_df_cmb['hdi_5.5%'] > -0.18, eff_df_cmb['hdi_94.5%'] < 0.18)
+eff_df_cmb['positive effect'] = eff_df_cmb['hdi_5.5%'] > 0.185
+eff_df_cmb['negative effect'] = eff_df_cmb['hdi_94.5%'] < -0.185
+eff_df_cmb['null effect'] = np.logical_and(eff_df_cmb['hdi_5.5%'] > -0.185, eff_df_cmb['hdi_94.5%'] < 0.185)
 #i might need some additional specifications for below
-eff_df_cmb['leaning positive effect'] = np.logical_and(eff_df_cmb['mean'] > 0.18, np.logical_and(eff_df_cmb['hdi_5.5%'] > 0., eff_df_cmb['hdi_5.5%'] < 0.18))
-eff_df_cmb['leaning negative effect'] = np.logical_and(eff_df_cmb['mean'] < -0.18, np.logical_and(eff_df_cmb['hdi_94.5%'] < 0., eff_df_cmb['hdi_94.5%'] > -0.18))
+eff_df_cmb['leaning positive effect'] = np.logical_and(eff_df_cmb['mean'] > 0.185, np.logical_and(eff_df_cmb['hdi_5.5%'] > 0., eff_df_cmb['hdi_5.5%'] < 0.185))
+eff_df_cmb['leaning negative effect'] = np.logical_and(eff_df_cmb['mean'] < -0.185, np.logical_and(eff_df_cmb['hdi_94.5%'] < 0., eff_df_cmb['hdi_94.5%'] > -0.185))
 #eff_df_cmb['undefined'] = eff_df_cmb[['positive effect', 'negative effect', 'null effect', 'leaning positive effect', 'leaning negative effect']].sum(axis=1) == 0
 
 
@@ -105,8 +105,8 @@ eff_list = (eff_df_cmb[['feature', 'positive effect', 'leaning positive effect',
 
 eff_list['Observed Effects (%)'] *= 100 
 
-eff_list.replace({'feature' : {'delta_cf': 'Delta (cf)', 
-                               'delta_pw': 'Delta (pw)', 
+eff_list.replace({'feature' : {#'delta_cf': 'Delta (cf)', 
+                               #'delta_pw': 'Delta (pw)', 
                                'theta_cf': 'Theta (cf)', 
                                'theta_pw': 'Theta (pw)', 
                                'alpha_cf': 'Alpha (cf)', 
@@ -118,7 +118,7 @@ eff_list.replace({'feature' : {'delta_cf': 'Delta (cf)',
                                'n_peaks': '#Peaks',
                                'exponent': 'Exponent',
                                'offset': 'Offset',
-                               'knee_freq': 'Knee Frequency (Hz)',
+                               #'knee_freq': 'Knee Frequency (Hz)',
                                }}, inplace=True)
 # %%
 eff_probas = eff_list.groupby(['Effect', 'feature']).mean().reset_index()#'feature')
@@ -132,13 +132,14 @@ cmap = [pal[3], pal2[3], pal[0], pal2[0], pal[2]]
 
 c_order = [ 'positive effect', 'leaning positive effect', 'negative effect','leaning negative effect','null effect',]
 
-label_order = ['Delta (cf)', 'Delta (pw)', 
+label_order = [#'Delta (cf)', 'Delta (pw)', 
            'Theta (cf)', 'Theta (pw)', 
            'Alpha (cf)', 'Alpha (pw)',
            'Beta (cf)', 'Beta (pw)',
            'Gamma (cf)', 'Gamma (pw)',
            '#Peaks', 'Exponent', 'Offset', 
-           'Knee Frequency (Hz)']
+           #'Knee Frequency (Hz)'
+           ]
 
 f, ax = plt.subplots(figsize=(8, 4))
 p = (so.Plot(data=eff_probas, 
@@ -197,7 +198,7 @@ f.savefig('../results/hist_log_reg_effects.svg')
 
 #%% now lets plot everything on a brain
 
-ch_effects = (eff_df_cmb.reset_index()[['index', 'positive effect', 'negative effect',]]# 'leaning positive effect', 'leaning negative effect']]
+ch_effects = (eff_df_cmb.reset_index()[['index', 'positive effect', 'negative effect', 'leaning positive effect', 'leaning negative effect']]
            .groupby('index')
            .mean()
            .sum(axis=1)
@@ -209,19 +210,20 @@ ch_effects['ch_name'] = [ch[6:-1] for ch in ch_effects['ch_name']]
 
 #effect_order = [ix[6:-1] for ix in ch_effects.index]
 
-reindex_array = [np.argmax(eff == names_order_mne[1:]) for eff in ch_effects['ch_name']]
+reindex_array = [np.argmax(eff == names_order_mne[2:]) for eff in ch_effects['ch_name']]
 
 #ch_effects[ch_effects['Effect'] <= .14] = np.nan
 
 # %%
 cur_param = "Effect"
+view = "lateral" # lateral
 
-df2plot = ch_effects[reindex_array]
+df2plot = ch_effects#[reindex_array]
 
 plot_kwargs = {
     'hemi':"split",
     'surf':"inflated",
-    'views':["medial",], # "medial"
+    'views':[view,], # "medial"
     'subjects_dir':subjects_dir,
     'cortex':[(.6,.6,.6), (.6,.6,.6)], #turn sulci and gyri to the same grey
     'background':'white',
@@ -230,7 +232,8 @@ plot_kwargs = {
     'size':(800, 400),
 }
 
-stc_parc = np.concatenate([df2plot.query('ch_name == "???"')[cur_param], df2plot[cur_param]])
+stc_parc = np.concatenate([[0,0], df2plot[cur_param]])
+stc_parc[stc_parc == 0] = np.nan
 stc_mask = np.zeros(stc_parc.shape[0]) == 1
 stc_mask[:2] = True #mask subcortical
 
@@ -240,7 +243,7 @@ cur_eff = plot_parc(stc_parc,
           labels_mne, 
           subjects_dir, 
           cmap='magma', 
-          clevels=(df2plot[cur_param].min(),
+          clevels=(0,
                     df2plot[cur_param].mean(),
                     df2plot[cur_param].max()),
           plot_kwargs=plot_kwargs, 
@@ -259,7 +262,7 @@ plt.clim(df2plot[cur_param].min(), df2plot[cur_param].max())
 plt.show()
 fig.tight_layout()
 
-fig.savefig(f'../results/brain_log_{cur_param}_tinnitus_medial.svg')
+fig.savefig(f'../results/brain_log_{cur_param}_tinnitus_{view}_almost.svg')
 
 # %%
 ch_effects[ch_effects['Effect'] > 0.10]

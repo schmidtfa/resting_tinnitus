@@ -52,7 +52,7 @@ def get_nearest_empty_room(info):
 
 
 
-def raw2source(raw, subject_id, subjects_dir, preproc_settings):
+def raw2source(raw, subject_id, subjects_dir, preproc_settings, src_type='mne'):
 
     # %Compute a covariance matrix
     ###### ESTIMATE NOISE COVARIANCE MATRIX
@@ -78,12 +78,23 @@ def raw2source(raw, subject_id, subjects_dir, preproc_settings):
     bem_file = join(fs_path, 'bem', 'fsaverage-5120-bem-sol-single-layer.fif')
 
     fwd = mne.make_forward_solution(info=info, trans=fname_trans, src=src_file, bem=bem_file)
-    inv = mne.minimum_norm.make_inverse_operator(info, fwd, noise_cov, rank=true_rank, loose=0, fixed=True, depth=0.8)
 
-    snr = 3
-    lambda2 = 1 / snr ** 2  # = default value
+    if src_type == 'mne':
+        inv = mne.minimum_norm.make_inverse_operator(info, fwd, noise_cov, rank=true_rank, loose=0, fixed=True, depth=0.8)
+        snr = 3
+        lambda2 = 1 / snr ** 2  # = default value
+        stc = mne.minimum_norm.apply_inverse_raw(raw, inv, lambda2=lambda2, method='MNE')
+    elif src_type == 'beamformer':
 
-    stc = mne.minimum_norm.apply_inverse_raw(raw, inv, lambda2=lambda2, method='MNE')
+        data_cov = mne.compute_raw_covariance(raw, rank=None, picks='meg', method='auto')
+
+        filters = mne.beamformer.make_lcmv(info, fwd, data_cov, reg=0.05,
+                                           noise_cov=noise_cov, pick_ori='max-power',
+                                           weight_norm='nai', rank=true_rank)
+        
+        stc = mne.beamformer.apply_lcmv_raw(raw, filters)
+    else:
+        raise ValueError(f'src_type can be either "beamformer" or "mne" not "{src_type}"')
 
     return stc
 

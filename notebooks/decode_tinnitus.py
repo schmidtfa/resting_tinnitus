@@ -171,18 +171,21 @@ y_pred = (idata.posterior_predictive.y_pred.mean(axis=0).mean(axis=0) > 0.5).to_
 
 
 #%%
-
-
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.pipeline import make_pipeline
 from mne.decoding import Vectorizer, SlidingEstimator, Scaler
 from sklearn.impute import SimpleImputer#,IterativeImputerdata_cmb
 from sklearn.preprocessing import RobustScaler, FunctionTransformer
+from mne.decoding import cross_val_multiscore
 
 from sklearn.model_selection import cross_val_score
 
 sorted_df = df_cmb.set_index(['subject_id', 'ch_name'])
 
+predictors.remove('subject_id')
+predictors.remove('ch_name')
+
+#%%
 X = sorted_df[predictors].to_xarray().to_array().to_numpy().swapaxes(0,1)
 y = sorted_df['tinnitus'].to_xarray().to_numpy()
 
@@ -195,14 +198,24 @@ d3_scaler = lambda X : np.array([RobustScaler().fit_transform(sub) for sub in X]
 
 clf = make_pipeline(
                     #FunctionTransformer(d3_scaler),
-                    SlidingEstimator(RandomForestClassifier(n_estimators=50,
-                                           )))
+                    SlidingEstimator(RandomForestClassifier()))
 
-scores = cross_val_score(clf, X, y, cv=5)
+scores = cross_val_multiscore(clf, X_train, y_train, cv=5, scoring='balanced_accuracy')
 scores.mean()
 
 #%%
-scores
+scores.mean(axis=0)
 # %%
+df_acc = pd.DataFrame({'ch_name': df_cmb['ch_name'].unique(),
+                       'acc': scores.mean(axis=0)})
+# %%
+df_acc[df_acc['acc'] > 0.6]
 
 # %%
+mdf = clf.fit(X_train, y_train)
+
+# %%
+scores2 = clf.score(X_test, y_test)
+# %%
+feature_importance = dict()
+feature_importance[measure][:,run] = clf.feature_importances_

@@ -1,20 +1,18 @@
 #%% imports
 from cluster_jobs.rf_tinnitus import RandomForest
-#from cluster_jobs.rf_loo import RandomForest
 from plus_slurm import JobCluster, PermuteArgument
 import pandas as pd
 
 #% get jobcluster
-job_cluster = JobCluster(required_ram='4G',
-                         request_time=1000,
-                         request_cpus=4,
-                         exclude_nodes='scs1-7,scs1-8,scs1-9,scs1-10,scs1-12,scs1-13,scs1-14',
-                         #apptainer_image='oras://ghcr.io/thht/obob-singularity-container/xfce_desktop_minimal_bullseye:latest',
-                         python_bin='/mnt/obob/staff/fschmidt/resting_tinnitus/.venv/bin/python')
+job_cluster = JobCluster(required_ram='1G',
+                         request_time=60*4,
+                         request_cpus=2,
+                         qos='high_prio',
+                         python_bin='/home/schmidtfa/experiments/resting_tinnitus/.pixi/envs/default/bin/python')
 
 
-df_cmb = pd.read_csv('/mnt/obob/staff/fschmidt/resting_tinnitus/data/tinnitus_all_spec_features.csv')
-chs = list(df_cmb['ch_name'].unique())
+df_ap = pd.read_csv('/home/schmidtfa/experiments/resting_tinnitus/data/aperiodic_params.csv')
+chs = list(df_ap['ch_name'].unique())
 
 #%% check if data already exists
 

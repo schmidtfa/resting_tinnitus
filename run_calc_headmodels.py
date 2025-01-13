@@ -1,16 +1,17 @@
 #%%
 from cluster_jobs.calc_headmodels import HeadModelJob
-from plus_slurm import ApptainerJobCluster, PermuteArgument
+from plus_slurm import JobCluster, PermuteArgument
 from plus_slurm import PermuteArgument
 import pandas as pd
 
-job_cluster = ApptainerJobCluster(required_ram='4G',
-                                    request_time = 180,
-                                    request_cpus=2,
-                                    apptainer_image='oras://ghcr.io/thht/obob-singularity-container/xfce_desktop_minimal_bullseye:latest',
-                                    python_bin='/mnt/obob/staff/fschmidt/resting_tinnitus/.venv/bin/python')
+job_cluster = JobCluster(required_ram='4G',
+                                  request_cpus=2,
+                                  request_time=60*2,
+                                  qos='high_prio',
+                                  python_bin='/home/schmidtfa/experiments/resting_tinnitus/.pixi/envs/default/bin/python')
 
-df_all = pd.read_csv('/mnt/obob/staff/fschmidt/resting_tinnitus/data/tinnitus_match.csv')
+
+df_all = pd.read_csv('/home/schmidtfa/experiments/resting_tinnitus/data/tinnitus_match.csv')
 
 subject_ids = df_all['subject_id'].unique()
 

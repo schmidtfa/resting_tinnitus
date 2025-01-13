@@ -1,28 +1,27 @@
 #%% imports
 from cluster_jobs.lin_reg import LinReg
-from plus_slurm import ApptainerJobCluster, PermuteArgument
+from plus_slurm import JobCluster, PermuteArgument
 import pandas as pd
 
 #% get jobcluster
-job_cluster = ApptainerJobCluster(required_ram='4G',
-                         request_time=1000,
+job_cluster = JobCluster(required_ram='5G',
+                         request_time=60*4,
                          request_cpus=4,
-                         apptainer_image='oras://ghcr.io/thht/obob-singularity-container/xfce_desktop_minimal_bullseye:latest',
-                         python_bin='/mnt/obob/staff/fschmidt/resting_tinnitus/.venv/bin/python')
+                         qos='high_prio',
+                         python_bin='/home/schmidtfa/experiments/resting_tinnitus/.pixi/envs/default/bin/python')
 
-feature_list = [ 'theta', 'alpha', 'delta', 'knee_freq', 'beta', 'exponent', 'offset', 'gamma', 'n_peaks']
-#feature_list = ['exponent', 'offset', 'gamma', 'n_peaks']
 
-df_all = pd.read_csv('/mnt/obob/staff/fschmidt/resting_tinnitus/data/tinnitus_match.csv')
+feature_list = ['delta_cf','theta_cf', 'alpha_cf', 'beta_cf', #'gamma_cf',
+                'delta_pw', 'theta_pw', 'alpha_pw', 'beta_pw', #'gamma_pw',
+                'Exponent_1', 'Exponent_2', #'Knee Frequency (Hz)', 
+                'Offset', 'tau', 'n_peaks']
+
+df_all = pd.read_csv('/home/schmidtfa/experiments/resting_tinnitus/data/aperiodic_params.csv')
 subject_ids = list(df_all['subject_id'].unique())
 
 #% put in jobs...
 job_cluster.add_job(LinReg,
-                    subject_list = subject_ids,
                     feature=PermuteArgument(feature_list),
-                    low_freq=0.25,
-                    up_freq=98,
-                    periodic_type=PermuteArgument(['cf', 'pw', None]),
                     )
 #%% submit...
 job_cluster.submit(do_submit=True)

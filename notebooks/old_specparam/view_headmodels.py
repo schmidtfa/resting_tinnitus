@@ -8,7 +8,7 @@ import pandas as pd
 subs2check = ['19640925tewm', '19571220rsdo']
 
 #%%
-home_base = '/Users/b1059770/Library/Group Containers/G69SCX94XU.duck/Library/Application Support/duck/Volumes.noindex/bomber/resting_tinnitus'
+home_base = '/home/schmidtfa/experiments/resting_tinnitus'
 
 mri_path = join(home_base, 'data/freesurfer')
 fs_path = join(mri_path, 'fsaverage')
@@ -28,7 +28,7 @@ df_all = pd.read_csv(join(home_base, 'data/tinnitus_match.csv'))
 subject_ids = list(df_all['subject_id'].unique())
 
 
-subID = subs2check[1]
+subID = subject_ids[0]
 
 coreg  = mne.read_trans(hmfolder + subID + '/' + subID + '-trans.fif')
 
@@ -43,3 +43,5 @@ mne.viz.set_3d_view(fig, **view_kwargs)
 # %%
 mne.io.read_info(hmfolder + subID + '/' + subID + '-trans.fif')
 
+
+# %%

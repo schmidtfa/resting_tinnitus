@@ -16,8 +16,11 @@ mpl.rcParams.update(new_rc_params)
 
 # %%
 
-df = pd.read_csv('/mnt/obob/staff/fschmidt/resting_tinnitus/data/tinnitus_all_spec_features.csv')
-osc_cols = ['tinnitus', 'ch_name', 'delta_osc', 'theta_osc', 'alpha_osc','beta_osc','gamma_osc']
+df_ap = pd.read_csv('/home/schmidtfa/experiments/resting_tinnitus/data/aperiodic_params.csv')
+df_pe = pd.read_csv('/home/schmidtfa/experiments/resting_tinnitus/data/periodic_params.csv')
+
+df = df_ap.merge(df_pe, on=['ch_name', 'subject_id', 'tinnitus','dB', 'age', 'tinnitus_distress'])
+osc_cols = ['tinnitus', 'ch_name', 'delta_osc', 'theta_osc', 'alpha_osc','beta_osc']
 df_osc = (df[osc_cols].melt(id_vars=['tinnitus', 'ch_name'],
                    var_name='Frequency Band',
                    value_name='Parcel-Wise Oscillations (%)')
@@ -31,7 +34,7 @@ df_osc['Frequency Band'] = df_osc['Frequency Band'].replace({
                                 'theta_osc': 'Theta',
                                 'alpha_osc': 'Alpha',
                                 'beta_osc': 'Beta',
-                                'gamma_osc': 'Gamma',
+                                #'gamma_osc': 'Gamma',
                                 })
 #%%
 f, ax = plt.subplots(figsize=(10, 5))
@@ -49,6 +52,6 @@ sns.stripplot(data=df_osc,
 sns.despine()
 
 
-f.savefig('../results/parcelwise_oscillations.svg')
+f.savefig('/home/schmidtfa/experiments/resting_tinnitus/results/parcelwise_oscillations.svg')
 
 # %%

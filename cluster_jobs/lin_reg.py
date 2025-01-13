@@ -15,99 +15,29 @@ import arviz as az
 class LinReg(Job):
 
     def run(self,
-            subject_list,
             feature,
-            low_freq=0.25,
-            up_freq=98,
-            mask_level=.90,
-            periodic_type=None,
             ):
-
-        if np.logical_and(periodic_type != None, feature in ['exponent', 'offset', 'knee_freq', 'n_peaks']):
-            return print('this doesnt make sense')
-        elif np.logical_and(periodic_type == None, feature in ['delta', 'theta', 'alpha', 'beta', 'gamma']):
-            return print('this also makes no sense')
-        
-        else:
 
             sample_kwargs = {#'progressbar':False,
                             'draws': 2000,
                             'tune': 2000,
                             'chains': 4,
-                            'target_accept': 0.95,}
+                            'target_accept': 0.99,
+                            'nuts_sampler':'numpyro'
+                            }
 
-            all_files = list(Path('/mnt/obob/staff/fschmidt/resting_tinnitus/data/specparam_3').glob(f'*/*__peak_threshold_2__freq_range_[[]{low_freq}, {up_freq}[]].dat'))
-            
-            periodic, aperiodic = [], []
+            df_ap = pd.read_csv('/home/schmidtfa/experiments/resting_tinnitus/data/aperiodic_params.csv')
+            df_pe = pd.read_csv('/home/schmidtfa/experiments/resting_tinnitus/data/periodic_params.csv')
 
-            for f in all_files:
-                
-                cur_data = joblib.load(f)
-
-                periodic.append(cur_data['periodic'])
-                aperiodic.append(cur_data['aperiodic'])
-
-            #%% 
-            df_periodic = pd.concat(periodic).query('subject_id == @subject_list')
-            df_aperiodic = pd.concat(aperiodic).query('subject_id == @subject_list')
-            #%% Test for physiological differences in aperiodic activity (tinnitus vs. control)
-            #%% Test for physiological differences in aperiodic activity (tinnitus vs. control)
-            physio = ['ECG', 'EOGV', 'EOGH']
-
-            if feature in ['exponent', 'offset', 'knee_freq']:
-                cur_df = (df_aperiodic.query('ch_name != @physio')
-                                      .query('tinnitus == True')
-                                     )
-
-            elif feature in ['delta', 'theta', 'alpha', 'beta', 'gamma', 'n_peaks']:
-                if feature != 'n_peaks':
-                    cur_df = (df_periodic.query('ch_name != @physio')
-                                     .query(f'peak_params == "{periodic_type}"')
-                                     .query('tinnitus == True'))
-                else:
-                    cur_df = (df_periodic.query('ch_name != @physio')
-                                     .query(f'peak_params == "cf"')
-                                     .query('tinnitus == True')) #arbitrary choice -> just need the peaks
-                
-            
-            #get knee and fixed chans
-            knee_settings = joblib.load('/mnt/obob/staff/fschmidt/resting_tinnitus/data/knee_settings.dat')
-            knee_chans = knee_settings['knee']
-            fixed_chans = knee_settings['fixed']
-            
-            cur_df = pd.concat([cur_df.query("ch_name == @knee_chans").query('aperiodic_mode == "knee"'),
-                                cur_df.query("ch_name == @fixed_chans").query('aperiodic_mode == "fixed"')])
-
-
-            if feature in ['n_peaks', 'beta']:
-                df_cf = (df_periodic.query('ch_name != @physio')
-                        .query(f'peak_params == "cf"')
-                        .query('tinnitus == True'))
-                
-                df_cf = pd.concat([df_cf.query("ch_name == @knee_chans").query('aperiodic_mode == "knee"'),
-                                   df_cf.query("ch_name == @fixed_chans").query('aperiodic_mode == "fixed"')])
-
-
-                #remove train and line noise from n peaks
-                cur_df['n_peaks'] = cur_df['n_peaks'] - (np.isnan(df_cf['line_noise']) == False).to_numpy().astype(int)
-                cur_df['n_peaks'] = cur_df['n_peaks'] - np.logical_and(df_cf['beta'] < 17, df_cf['beta'] > 16).to_numpy().astype(int)
-
-                cur_df['beta'][np.logical_and(df_cf['beta'] < 17, df_cf['beta'] > 16).to_numpy()] = np.nan
-            
-            #%% drop bad fits
-            cur_df = cur_df.mask(cur_df['r_squared'] < mask_level)
-            
+            cur_df = df_ap.merge(df_pe, on=['ch_name', 'subject_id', 'tinnitus','dB', 'age', 'tinnitus_distress'])
+            cur_df = cur_df.query('tinnitus == True')
             #%%
             mdf = self._run_lin_reg(cur_df, feature, sample_kwargs)
-            ch_effects = az.summary(mdf, var_names='beta|')
+            ch_effects = az.summary(mdf, var_names='beta|', hdi_prob=.89)
 
             #%% save
-            if feature in ['exponent', 'offset', 'knee_freq', 'n_peaks']:
-                ch_effects.to_csv(f'/mnt/obob/staff/fschmidt/resting_tinnitus/data/lin_reg/{feature}.csv')
-                mdf.to_netcdf(f'/mnt/obob/staff/fschmidt/resting_tinnitus/data/lin_reg/{feature}.nc')
-            elif feature in ['delta', 'theta', 'alpha', 'beta', 'gamma']:
-                ch_effects.to_csv(f'/mnt/obob/staff/fschmidt/resting_tinnitus/data/lin_reg/{feature}_{periodic_type}.csv')
-                mdf.to_netcdf(f'/mnt/obob/staff/fschmidt/resting_tinnitus/data/lin_reg/{feature}_{periodic_type}.nc')
+            ch_effects.to_csv(f'/home/schmidtfa/experiments/resting_tinnitus/data/lin_reg/{feature}.csv')
+            mdf.to_netcdf(f'/home/schmidtfa/experiments/resting_tinnitus/data/lin_reg/{feature}.nc')
 
 
      # %% define regression model

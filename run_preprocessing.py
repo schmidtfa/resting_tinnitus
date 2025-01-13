@@ -1,24 +1,27 @@
 #%% imports
 from cluster_jobs.preproc import PreprocessingJob
-from plus_slurm import ApptainerJobCluster, PermuteArgument
+from plus_slurm import JobCluster, PermuteArgument
 import pandas as pd
 #% get jobcluster
-job_cluster = ApptainerJobCluster(required_ram='250G',
-                         request_time=10_000,
+job_cluster = JobCluster(required_ram='40G',
+                         request_time=60*1,
                          request_cpus=2,
-                         apptainer_image='oras://ghcr.io/thht/obob-singularity-container/xfce_desktop_minimal_bullseye:latest',
-                         python_bin='/mnt/obob/staff/fschmidt/resting_tinnitus/.venv/bin/python')
+                         qos='high_prio',
+                         python_bin='/home/schmidtfa/experiments/resting_tinnitus/.pixi/envs/default/bin/python')
 
 
-df_all = pd.read_csv('/mnt/obob/staff/fschmidt/resting_tinnitus/data/tinnitus_match.csv')
+
+df_all = pd.read_csv('/home/schmidtfa/experiments/resting_tinnitus/data/tinnitus_match.csv')
 subject_ids = df_all['subject_id'].unique()
 
-#% put in jobs...
+#%% put in jobs...
 job_cluster.add_job(PreprocessingJob,
                     subject_id=PermuteArgument(subject_ids),
-                    #src_type='beamformer',
-                    fft_method='irasa'
-                    )
+                    duration=2,
+                    hmax=PermuteArgument([2, 3, 4]),
+                    source = 'surface',
+                    atlas = 'glasser')
+                    
 #% submit...
 job_cluster.submit(do_submit=True)
 

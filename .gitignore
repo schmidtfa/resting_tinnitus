@@ -5,3 +5,6 @@ results/
 .DS_Store
 .venv
 .ipynb_checkpoints
+# pixi environments
+.pixi
+*.egg-info

@@ -1,11 +1,10 @@
 #%%
 import joblib
 from plus_slurm import Job
-from sklearn.model_selection import GridSearchCV, RepeatedStratifiedKFold, StratifiedKFold
-from sklearn.ensemble import RandomForestClassifier, HistGradientBoostingClassifier
+from sklearn.model_selection import GridSearchCV, StratifiedKFold
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.inspection import permutation_importance
-from sklearn.svm import SVC
-from sklearn.linear_model import LogisticRegression
+
 
 import numpy as np
 import pandas as pd
@@ -20,28 +19,35 @@ class RandomForest(Job):
             ):
 
         #%%
-        df_cmb = pd.read_csv('/mnt/obob/staff/fschmidt/resting_tinnitus/data/tinnitus_all_spec_features.csv')
+        df_ap = pd.read_csv('/home/schmidtfa/experiments/resting_tinnitus/data/aperiodic_params.csv')
+        df_pe = pd.read_csv('/home/schmidtfa/experiments/resting_tinnitus/data/periodic_params.csv')
+
+        df_cmb = df_ap.merge(df_pe, on=['ch_name', 'subject_id', 'tinnitus','dB', 'age', 'tinnitus_distress'])
         # #% debug
-        # all_chs = df_cmb['ch_name'].unique()
-        # cur_ch = all_chs[0]
-        # n_splits=5
-        # n_repeats=5
-        # tn_match = pd.read_csv('/mnt/obob/staff/fschmidt/resting_tinnitus/data/tinnitus_match.csv')[['measurement_age', 'subject_id']]
+       #  all_chs = df_cmb['ch_name'].unique()
+       #  cur_ch = all_chs[0]
+       #  n_splits=5
+       #  n_repeats=5
 
         #%%
+        #df_cmb = df_cmb.query('age > 50')
+        #df_cmb['old'] = df_cmb['age'] > 50 #median age is 60
         cur_ch_df = df_cmb.query(f'ch_name == "{cur_ch}"').reset_index()
-        #cur_ch_df = cur_ch_df.merge(tn_match, on='subject_id').query('measurement_age > 40')
+        cur_ch_df.drop_duplicates(subset='subject_id', inplace=True)
 
-        predictors = ['offset', 
-                      'exponent',                     
-                #       'n_peaks', 
-                       'theta_cf', 'theta_pw',#'theta_bw',
+
+        predictors = ['Offset', 
+                      'Exponent_1',  
+                      'Exponent_2',  
+                 #     'Knee Frequency (Hz)', 
+                      'tau',                  
+                #      'n_peaks', 
+                #      'delta_cf', 'delta_pw',#'theta_bw',
+                #      'theta_cf', 'theta_pw',#'theta_bw',
                 #       #'alpha_osc',
                        'alpha_cf', 'alpha_pw', #'alpha_bw',
                 #       #'beta_osc', 
-                       'beta_cf', 'beta_pw', #'beta_bw',
-                #       #'gamma_osc',
-                       'gamma_cf', 'gamma_pw',#'gamma_bw', 
+                #       'beta_cf', 'beta_pw', #'beta_bw', 
                     ]
 
         #np.random.shuffle(cur_ch_df['tinnitus'])
@@ -67,13 +73,16 @@ class RandomForest(Job):
                         skf_nested = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=ix_nested)
                         #skf_nested = RepeatedStratifiedKFold(n_splits=n_splits, n_repeats=n_repeats, random_state=ix_nested)
 
-                        params = {'n_estimators': [100, 200, 300],
-                                  #'min_samples_leaf': [4, 6, 10],
-                                  #'C': [0.1, 0.25, .5, 1],
-                                 }
+                        param_grid = {
+                                'n_estimators': [100, 200, 500],  # Number of trees in the forest
+                                'max_depth': [None, 10, 20, 30],  # Maximum depth of the tree
+                                'min_samples_split': [2, 5, 10],  # Minimum number of samples required to split an internal node
+                                'min_samples_leaf': [1, 2, 4],    # Minimum number of samples required to be at a leaf node
+                                }
+
 
                         clf_cv = GridSearchCV(RandomForestClassifier(),
-                                                param_grid=params,
+                                                param_grid=param_grid,
                                                 cv=skf_nested,
                                                 scoring='roc_auc',
                                                 refit=True,
@@ -118,7 +127,7 @@ class RandomForest(Job):
                 'settings': df_settings}
 
 
-        out_f = f'/mnt/obob/staff/fschmidt/resting_tinnitus/data/ada_boost/{cur_ch}.dat'
+        out_f = f'/home/schmidtfa/experiments/resting_tinnitus/data/random_forest/{cur_ch}.dat'
 
         joblib.dump(data, out_f)
 # %%

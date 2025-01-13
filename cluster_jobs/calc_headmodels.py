@@ -3,6 +3,7 @@ import numpy as np
 import mne
 from mne.coreg import Coregistration
 from os.path import join
+import os
 import pandas as pd
 from cluster_jobs.meta_job import Job
 import pickle
@@ -14,57 +15,149 @@ class HeadModelJob(Job):
     data_file_suffix = '-trans.fif'
     
     def run(self, 
-            subject_id):
+            subject_id,
+            savefig=True):
       
-        mri_path = '/mnt/obob/staff/fschmidt/resting_tinnitus/data/freesurfer'
-        fs_path = join(mri_path, 'fsaverage')
+        #debug
+        #subject_id = '19480905mtbu'
+        mri_path = '/home/schmidtfa/experiments/resting_tinnitus/data/freesurfer'
+        out_folder = '/home/schmidtfa/experiments/resting_tinnitus/data/headmodels/' + subject_id + '/'
         trans = 'fsaverage' 
         
-        df = pd.read_csv('/mnt/obob/staff/fschmidt/resting_tinnitus/data/tinnitus_match.csv').query(f'subject_id == "{subject_id}"')
+        df = pd.read_csv('/home/schmidtfa/experiments/resting_tinnitus/data/tinnitus_match.csv').query(f'subject_id == "{subject_id}"')
+        cur_path = join('/home/schmidtfa/experiments/resting_tinnitus/data/sinuhe/', df['path'].iloc[0].split('/')[-1])
 
-        raw = mne.io.read_raw_fif(df['path'].to_list()[0], verbose=False)
+        raw = mne.io.read_raw_fif(cur_path, verbose=False)
 
-        max_settings_path = '/mnt/obob/staff/fschmidt/resting_tinnitus/utils'
-        #cal & cross talk files specific to system
-        calibration_file = join(max_settings_path, 'sss_cal.dat')
-        cross_talk_file = join(max_settings_path, 'ct_sparse.fif')
+        # # ONLY MAXFILTER HERE IF YOU DO TRANS IN PREPROC
+        # max_settings_path = '/home/schmidtfa/experiments/resting_tinnitus/utils'
+        # #cal & cross talk files specific to system
+        # calibration_file = join(max_settings_path, 'sss_cal.dat')
+        # cross_talk_file = join(max_settings_path, 'ct_sparse.fif')
                 
-        #find bad channels first
-        noisy_chs, flat_chs = mne.preprocessing.find_bad_channels_maxwell(raw,
-                                                                          calibration=calibration_file,
-                                                                          cross_talk=cross_talk_file)
-        #Load data
-        raw.load_data()
-        raw.info['bads'] = noisy_chs + flat_chs
+        # #find bad channels first
+        # noisy_chs, flat_chs = mne.preprocessing.find_bad_channels_maxwell(raw,
+        #                                                                   calibration=calibration_file,
+        #                                                                   cross_talk=cross_talk_file)
+        # #Load data
+        # raw.load_data()
+        # raw.info['bads'] = noisy_chs + flat_chs
 
-        raw = mne.preprocessing.maxwell_filter(raw,
-                                                calibration=calibration_file,
-                                                cross_talk=cross_talk_file,
-                                                destination=None,  # noqa
-                                                st_fixed=False
-                                                )
-
-
+        # raw = mne.preprocessing.maxwell_filter(raw,
+        #                                         calibration=calibration_file,
+        #                                         cross_talk=cross_talk_file,
+        #                                         destination=None,  # noqa
+        #                                         st_fixed=False
+        #                                         )
         info = mne.pick_info(raw.info, mne.pick_types(raw.info, meg=True))
 
         #%% do the coregistration
         coreg = Coregistration(info, trans, mri_path)
+        coreg.set_scale_mode('3-axis')
         coreg.fit_fiducials(verbose=True)
         coreg.fit_icp(n_iterations=6, nasion_weight=2, verbose=True)
-        coreg.omit_head_shape_points(distance=15 / 1000)
+        coreg.omit_head_shape_points(distance=5 / 1000)
         coreg.fit_icp(n_iterations=20, nasion_weight=10, verbose=True)
 
         dists = coreg.compute_dig_mri_distances() * 1e3  # in mm
         print(f"Distance between HSP and MRI (mean/min/max):\n{np.mean(dists):.2f} mm "f"/ {np.min(dists):.2f} mm / "
             f"{np.max(dists):.2f} mm")
+        
+        #%% create and save a scaled copy of mri subject fs average
+        new_source_identifier = subject_id + '_from_template'
 
-        file = open("/mnt/obob/staff/fschmidt/resting_tinnitus/data/headmodels/" + subject_id + "/info.pickle", 'wb')
+
+        mne.coreg.scale_mri("fsaverage", new_source_identifier, 
+                            scale=coreg.scale, 
+                            subjects_dir=mri_path, 
+                            annot=True, overwrite=True)
+
+        mne.scale_bem(new_source_identifier, "5120-bem-sol-single-layer", 
+                      subject_from="fsaverage", 
+                      scale=coreg.scale, 
+                      subjects_dir=mri_path, 
+                      on_defects='raise', verbose=None)
+    
+        mne.scale_source_space(new_source_identifier, 'fsaverage-vol-10-src.fif', 
+                               subject_from="fsaverage", 
+                               scale=coreg.scale, 
+                               subjects_dir=mri_path, n_jobs=None, verbose=None)
+        
+        mne.scale_source_space(new_source_identifier, 'fsaverage-ico-4-src.fif', 
+                               subject_from="fsaverage", 
+                               scale=coreg.scale, 
+                               subjects_dir=mri_path, n_jobs=None, verbose=None)
+
+
+        if os.path.isdir(out_folder) == False:
+            os.makedirs(out_folder)
+        file = open(out_folder + "info.pickle", 'wb')
         pickle.dump(info, file)
         file.close()    
         
         mne.write_trans(self.full_output_path, coreg.trans, overwrite=True)
         print('Coregistration done!')
 
+
+        if savefig: # REDO IT LATER
+                
+                # PLACEHOLDER: plot 3d stuff when xvfb is available
+                
+                import matplotlib.pyplot as plt  # Assuming 'info' is your data structure containing sensor and digitization information
+                head_mri_t = mne.transforms._get_trans(coreg.trans, "head", "mri")[0]
+                coord_frame = "head"
+                to_cf_t = mne.transforms._get_transforms_to_coord_frame(info, head_mri_t, coord_frame=coord_frame)
+
+                sensor_locs = np.array([ch['loc'][:3] for ch in info['chs'] if ch['ch_name'].startswith('MEG')])
+                sensor_locs = mne.transforms.apply_trans(to_cf_t['meg'], sensor_locs)
+
+                # Extract Digitization Points (excluding fiducials)
+                head_shape_points = np.array([point['r'] for point in info['dig'] if point['kind'] == 4])
+                head_shape_points = mne.transforms.apply_trans(to_cf_t['head'], head_shape_points)
+
+                # Create a 2x2 subplot layout
+                fig = plt.figure(figsize=(10, 10))
+                fig.suptitle(f'MEG - DIG Coregistration of {subject_id}', fontsize=16)
+
+                # Axial view
+                ax1 = fig.add_subplot(221)
+                ax1.scatter(sensor_locs[:, 0], sensor_locs[:, 1], s=20, c='r', label='Sensors')
+                ax1.scatter(head_shape_points[:, 0], head_shape_points[:, 1], s=10, c='b', label='Head Shape')
+                ax1.set_title('Axial View')
+                ax1.set_xlabel('Distance (m)')
+                ax1.set_ylabel('Distance (m)')
+                ax1.legend()
+
+                # Coronal view
+                ax2 = fig.add_subplot(222)
+                ax2.scatter(sensor_locs[:, 0], sensor_locs[:, 2], s=20, c='r')
+                ax2.scatter(head_shape_points[:, 0], head_shape_points[:, 2], s=10, c='b')
+                ax2.set_title('Coronal View')
+                ax2.set_xlabel('Distance (m)')
+                ax2.set_ylabel('Distance (m)')
+
+                # Sagittal view
+                ax3 = fig.add_subplot(223)
+                ax3.scatter(sensor_locs[:, 1], sensor_locs[:, 2], s=20, c='r')
+                ax3.scatter(head_shape_points[:, 1], head_shape_points[:, 2], s=10, c='b')
+                ax3.set_title('Sagittal View')
+                ax3.set_xlabel('Distance (m)')
+                ax3.set_ylabel('Distance (m)')
+
+                # 3D plot
+                ax4 = fig.add_subplot(224, projection='3d')
+                ax4.scatter(sensor_locs[:, 0], sensor_locs[:, 1], sensor_locs[:, 2], s=20, c='r', label='Sensors')
+                ax4.plot(sensor_locs[:, 0], sensor_locs[:, 1], sensor_locs[:, 2], color='k', linewidth=0.5)  # Connect sensors with lines
+                ax4.scatter(head_shape_points[:, 0], head_shape_points[:, 1], head_shape_points[:, 2], s=10, c='b', label='Head Shape')
+                ax4.set_title('3D View')
+                ax4.grid(False)  # Remove grid
+                ax4.axis('off')  # Remove axis
+
+                plt.tight_layout()
+                # save 
+                plt.savefig(out_folder + subject_id +  '_coreg.png', dpi=300)
+                # not sohw ... plt.show()
+                
 
 # %% UNCOMMENT FOR TESTING
 if __name__ == '__main__':

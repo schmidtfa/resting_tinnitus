@@ -7,8 +7,10 @@ import scipy.signal as dsp
 from neurodsp.spectral import compute_spectrum_welch
 from neurodsp.aperiodic.irasa import compute_irasa
 
+from pyrasa import irasa
+
 import sys
-sys.path.append('/mnt/obob/staff/fschmidt/resting_tinnitus/utils')
+sys.path.append('/home/schmidtfa/experiments/resting_tinnitus/utils')
 from preproc_utils import preproc_data
 from src_utils import raw2source
 import mne
@@ -28,11 +30,13 @@ class PreprocessingJob(Job):
             h_pass = 0.1,
             notch = False,
             do_ica = True,
-            fft_method=False,
             src_type='beamformer',
+            source='volume',
             downsample_f = 1000, #make sure that the 10 or 5k data is also at 1k
             ica_threshold = 0.5,
-            duration=4):
+            hmax=2.,
+            duration=4,
+            atlas='destrieux'):
 
 
         #%% debug
@@ -42,13 +46,27 @@ class PreprocessingJob(Job):
         # notch = False
         # do_ica = False
         # ica_threshold = 0.5
-        # max_filt=False
+        # max_filt=True
         # downsample_f = None
         # duration=4
-        # sgramm=True,
+        # src_type='beamformer'
+        # source='volume'
+        # atlas='dk'
+        # hmax=2.
 
-        df = pd.read_csv('/mnt/obob/staff/fschmidt/resting_tinnitus/data/tinnitus_match.csv').query(f'subject_id == "{subject_id}"')
-        cur_path = df['path'].to_list()[0]
+        if atlas == 'dk':
+             vol_atlas = 'aparc+aseg'
+             surf_atlas = 'aparc'
+        elif atlas == 'destrieux':
+             vol_atlas = 'aparc.a2009s+aseg'
+             surf_atlas = 'aparc.a2009s'
+        elif atlas == 'glasser':
+             if source == 'volume':
+                ValueError('No volumetric model for the glasser atlas available')
+             surf_atlas = 'HCPMMP1'
+
+        df = pd.read_csv('/home/schmidtfa/experiments/resting_tinnitus/data/tinnitus_match.csv').query(f'subject_id == "{subject_id}"')
+        cur_path = join('/home/schmidtfa/experiments/resting_tinnitus/data/sinuhe/', df['path'].iloc[0].split('/')[-1])
 
         preproc_settings = {'max_filt': max_filt, 
                             'notch': notch,
@@ -80,108 +98,80 @@ class PreprocessingJob(Job):
         #adjust preprocessing settings for empty room
         preproc_settings['coord_frame'] = 'meg'
         preproc_settings['do_ica'] = False
-        subjects_dir = '/mnt/obob/staff/fschmidt/resting_tinnitus/data/freesurfer'
+        subjects_dir = '/home/schmidtfa/experiments/resting_tinnitus/data/freesurfer'
 
-        stc = raw2source(raw, subject_id, subjects_dir, preproc_settings, src_type=src_type)
+        stc = raw2source(raw, subject_id, subjects_dir, preproc_settings, src_type=src_type, source=source)
 
         #% get tc from parcellation and return
-        fs_path = join(subjects_dir, 'fsaverage')
-        src_file = join(fs_path, 'bem', 'fsaverage-ico-4-src.fif')
-        src = mne.read_source_spaces(src_file)
-        labels_mne = mne.read_labels_from_annot('fsaverage', parc='HCPMMP1', subjects_dir=subjects_dir)
+        fs_path = join(subjects_dir, f'{subject_id}_from_template')
+        if source == 'volume':
+                src_file = f'{fs_path}/bem/{subject_id}_from_template-vol-10-src.fif'
+                src = mne.read_source_spaces(src_file)
+                labels_mne = join(fs_path, 'mri/' + vol_atlas + '.mgz')
+                label_names = mne.get_volume_labels_from_aseg(labels_mne)
 
-        names_order_mne = np.array([label.name[:-3] for label in labels_mne])
+                ctx_logical = [True if 'ctx' in label else False for label in label_names]
+                sctx_logical = [True if f == False else False for f in ctx_logical]
+                
+                ctx_labels = [label[4:] for label in label_names if 'ctx' in label]
+                sctx_labels = list(np.array(label_names)[sctx_logical])
+                rh = [True if label[:2] == 'rh' else False for label in ctx_labels]
+                lh = [True if label[:2] == 'lh' else False for label in ctx_labels]
 
-        rh = [True if label.hemi == 'rh' else False for label in labels_mne]
-        lh = [True if label.hemi == 'lh' else False for label in labels_mne]
+                label_info = {'lh': lh,
+                              'rh': rh,
+                              'parc': vol_atlas + '.mgz',
+                              'ctx_labels': ctx_labels,
+                              'ctx_logical': ctx_logical,
+                              'sctx_logical': sctx_logical,
+                              'sctx_labels': sctx_labels}
+        elif source == 'surface':
+                src_file = f'{fs_path}/bem/{subject_id}_from_template-ico-4-src.fif'
+                src = mne.read_source_spaces(src_file)
+                labels_mne = mne.read_labels_from_annot(f'{subject_id}_from_template', 
+                                                        parc=surf_atlas, 
+                                                        subjects_dir=subjects_dir)
+                names_order_mne = np.array([label.name[:-3] for label in labels_mne])
 
-        label_info = {'lh': lh,
-                      'rh': rh,
-                      'parc': 'HCPMMP1',
-                      'names_order_mne': names_order_mne}
+                rh = [True if label.hemi == 'rh' else False for label in labels_mne]
+                lh = [True if label.hemi == 'lh' else False for label in labels_mne]
+
+                label_info = {'lh': lh,
+                                'rh': rh,
+                                'parc': surf_atlas,
+                                'names_order_mne': names_order_mne}
         
-        if fft_method == 'sgramm':
-                sgramm_settings = {'fs':fs,
-                                   'window': 'hann',
-                                   'nperseg': int(fs*duration), 
-                                   'noverlap': int(fs*duration/2)}
-                freq, _, eog_psd = dsp.spectrogram(eog, **sgramm_settings)
-                _, _, ecg_psd = dsp.spectrogram(ecg, **sgramm_settings)
+        #%%
+        welch_settings = { 
+                'avg_type':'median',
+                'nperseg': int(fs*duration),
+                'noverlap': int(fs*duration / 2), #50% overlap as default
+                }
+        irasa_kwargs = {'fs': fs,
+                        'band': (1, 100),
+                        'psd_kwargs': welch_settings,
+                        'hset_info': (1.05, hmax, 0.05)}
 
-                #slight deviation from below. I need to extract the label_tc before doing fft.
-                #Otherwise i would need to hack mne more than i want to
-                label_tc = mne.extract_label_time_course(stc, labels_mne, src, mode='mean_flip') #TODO: Maybe try PCA
+        eog_psd = irasa(eog, **irasa_kwargs)
+        ecg_psd = irasa(ecg, **irasa_kwargs)
 
-                data_dict = {'label_tc': label_tc,
-                             'label_info': label_info}
-                
-                _, _, data_dict['label_tc'] = dsp.spectrogram(label_tc, **sgramm_settings)
+        # mean flip time series costs significantly less memory than averaging the irasa'd spectra
+        label_tc = mne.extract_label_time_course(stc, labels_mne, src, mode='mean_flip')
 
-        elif fft_method == 'multitaper':
-                from mne.time_frequency import psd_array_multitaper
+        irasa_label_stc = irasa(label_tc, **irasa_kwargs)
+        peak_kwargs = {'min_peak_height': 0.1,
+                        'peak_threshold': 1}
+        aperiodic_error = irasa_label_stc.get_aperiodic_error(peak_kwargs=peak_kwargs) 
 
-                #remove last samples to make clearly divisible
-                trl_len = int(fs*duration)
-                max_len = eog.shape[1] - eog.shape[1] % trl_len 
-
-                eog_psd, freq = psd_array_multitaper(eog[:,:max_len].reshape(eog.shape[0], -1, trl_len), sfreq=fs, bandwidth=2)
-                ecg_psd, _ = psd_array_multitaper(ecg[:,:max_len].reshape(ecg.shape[0], -1, trl_len), sfreq=fs, bandwidth=2)
-                stc_tmp, _ = psd_array_multitaper(stc.data[:,:max_len].reshape(stc.data.shape[0], -1, trl_len), sfreq=fs, bandwidth=2)
-
-                #average
-                eog_psd = eog_psd.mean(axis=1)
-                ecg_psd = ecg_psd.mean(axis=1)
-                stc.data = stc_tmp.mean(axis=1)
-
-                label_tc = mne.extract_label_time_course(stc, labels_mne, src, mode='mean')
-
-                data_dict = {'label_tc': label_tc,
-                             'label_info': label_info}
-
-        elif fft_method == 'welch':
-                freq, eog_psd = compute_spectrum_welch(eog, **welch_settings)
-                _, ecg_psd = compute_spectrum_welch(ecg, **welch_settings)
-                _, stc.data = compute_spectrum_welch(stc.data, **welch_settings) 
-
-                label_tc = mne.extract_label_time_course(stc, labels_mne, src, mode='mean')
-
-                data_dict = {'label_tc': label_tc,
-                             'label_info': label_info}
-
-        elif fft_method == 'irasa':
-
-                welch_settings = {'fs': fs, 
-                        'avg_type':'median',
-                        'window': 'hann',
-                        'nperseg': fs*duration,
-                        'noverlap': fs*duration / 2, #50% overlap as default
-                        #'f_range': (0.25, 98)
-                        }
-                freq, eog_psd_ap, eog_psd_p = compute_irasa(eog, **welch_settings)
-                _, ecg_psd_ap, ecg_psd_p = compute_irasa(ecg, **welch_settings)
-
-                eog_psd = {'periodic': eog_psd_p,
-                           'aperiodic': eog_psd_ap}
-                
-                ecg_psd = {'periodic': ecg_psd_p,
-                           'aperiodic': ecg_psd_ap}
-
-                stc_2 = stc.copy()
-                _, stc.data, stc_2.data = compute_irasa(stc.data, **welch_settings) 
-
-                label_tc_ap = mne.extract_label_time_course(stc, labels_mne, src, mode='mean')
-                label_tc_p = mne.extract_label_time_course(stc_2, labels_mne, src, mode='mean')
-
-                data_dict = {'label_tc_ap': label_tc_ap,
-                             'label_tc_p': label_tc_p,
-                             'label_info': label_info}
+        data_dict = {'irasa_label_stc': irasa_label_stc,
+                        'label_info': label_info,
+                        'aperiodic_error': aperiodic_error}
 
         #%%
         data = {'subject_info': df,
                 'eog': eog_psd,
                 'ecg': ecg_psd,
                 'src': data_dict,
-                'freq': freq,
                 'subject_id': subject_id,
                 }
 

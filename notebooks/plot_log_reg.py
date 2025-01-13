@@ -25,14 +25,10 @@ new_rc_params = {'text.usetex': False,
 mpl.rcParams.update(new_rc_params)
 
 
-local = True
-#%%get data
-if local:
-    home_base = '/Users/b1059770/Library/Group Containers/G69SCX94XU.duck/Library/Application Support/duck/Volumes.noindex/bomber/resting_tinnitus'
-else:
-    home_base = '/mnt/obob/staff/fschmidt/resting_tinnitus'
 
-data_dir = join(home_base, 'data/log_reg_final/')#final_new_pool_3/')
+home_base = '/home/schmidtfa/experiments/resting_tinnitus'
+
+data_dir = join(home_base, 'data/log_reg_duration_6_final/')#final_new_pool_3/')
 
 trans_path = 'data/headmodels/'
 mri_path = 'data/freesurfer/'
@@ -63,7 +59,7 @@ def plot_parc(stc_parc, stc_mask, cmap, parc='HCPMMP1'):
         'subjects_dir':subjects_dir,
         'cortex':[(.6,.6,.6), (.6,.6,.6)], #turn sulci and gyri to the same grey
         'background':'white',
-        'offscreen':True,
+        #'offscreen':True,
         'size':(800, 400),
     }
 
@@ -125,11 +121,11 @@ def plot_parc(stc_parc, stc_mask, cmap, parc='HCPMMP1'):
 #tinnitus ~ (1 + exponent|channel)
 
 #%% get data from model
-feature = 'exponent'
-freq = 'alpha'
+feature = 'Exponent_2'
+freq = 'beta'
 model_type = 'up'
 
-if feature in ['exponent', 'offset', 'knee_freq', 'n_peaks']:
+if feature in ['Exponent_1', 'Exponent_2', 'Offset', 'Knee Frequency (Hz)', 'n_peaks', 'tau']:
     #ch_effects = pd.read_csv(join(data_dir, f'{feature}.csv'))
     #nc_datasets = list(Path(data_dir).glob(f'{feature}*.nc'))
     mdf = az.from_netcdf(join(data_dir, f'{feature}_{model_type}.nc'))
@@ -141,8 +137,6 @@ else:
 ch_effects = az.summary(mdf, var_names='beta_ch', hdi_prob=.89)
     
 
-
-
 #%% reorder according to mne labels
 effect_order = [ix[8:-1] for ix in ch_effects.index]
 
@@ -151,20 +145,34 @@ reindex_array = [np.argmax(eff == names_order_mne[2:]) for eff in effect_order]
 eff_mu = ch_effects['mean'].to_numpy()[reindex_array]
 eff_low = ch_effects['hdi_5.5%'].to_numpy()[reindex_array]
 eff_high = ch_effects['hdi_94.5%'].to_numpy()[reindex_array]
+    
 
-stc_parc = np.exp(eff_mu) #as log-odds
+stc_parc = np.exp(eff_mu) #as odds ratio
 stc_mask_high = eff_low > 0.185
 stc_mask_low = eff_high < -0.185
 stc_mask = np.concatenate([i == False for i in [stc_mask_high + stc_mask_low]])
-stc_mask = np.zeros(stc_parc.shape) == 1
+#stc_mask = np.zeros(stc_parc.shape) == 1
 stc_mask = np.concatenate((np.array([True, True]), stc_mask)) 
 stc_parc = np.concatenate((np.array([0, 0]), stc_parc)) 
 
 #%% alpha pw and exponent
 eff_brain = plot_parc(stc_parc, stc_mask, 'RdBu_r')
+
+fig, ax = plt.subplots()
+ax.axis("off")
+
+plt.imshow(eff_brain, cmap='RdBu_r')
+cbaxes = inset_axes(plt.gca(), width="6%", height="36%", loc=7, borderpad=-2)
+cbar = plt.colorbar(cax=cbaxes, ax=ax, orientation='vertical')
+#plt.clim(df2plot[cur_param].min(), df2plot[cur_param].max())
+#plt.tight_layout()
+plt.show()
+fig.tight_layout()
+
+fig.savefig(f'../results/brain_log_{feature}_tinnitus_{freq}_{model_type}.svg')
 # %%
 #%%
-%matplotlib inline
+#%matplotlib inline
 az.plot_trace(mdf)
 plt.tight_layout()
 # %%

@@ -15,7 +15,7 @@ def get_nearest_empty_room(info):
     This function finds the empty room file with the closest date to the current measurement.
     The file is used for the noise covariance estimation.
     """
-    empty_room_path = '/mnt/sinuhe/data_raw/empty_room/subject_subject'
+    empty_room_path = '/home/schmidtfa/empty_room_data/subject_subject'
     all_empty_room_dates = np.array([datetime.strptime(date, '%y%m%d') for date in listdir(empty_room_path)])
 
     cur_date = info['meas_date']
@@ -31,13 +31,13 @@ def get_nearest_empty_room(info):
         cur_empty_path = join(empty_room_path, nearest_date)
 
         # do not use 210115 (styrofoam head fake measurement)
-        if cur_empty_path == '/mnt/sinuhe/data_raw/empty_room/subject_subject/210115':
-            cur_empty_path = '/mnt/sinuhe/data_raw/empty_room/subject_subject/210114'
+        if cur_empty_path == '/home/schmidtfa/empty_room_data/subject_subject/210115':
+            cur_empty_path = '/home/schmidtfa/empty_room_data/subject_subject/210114'
         # do not use 210321 (does not start with file id tag)
         elif '220321' in cur_empty_path:
-            cur_empty_path = '/mnt/sinuhe/data_raw/empty_room/subject_subject/220322'
+            cur_empty_path = '/home/schmidtfa/empty_room_data/subject_subject/220322'
         elif '220728' in cur_empty_path:
-            cur_empty_path = '/mnt/sinuhe/data_raw/empty_room/subject_subject/220721'
+            cur_empty_path = '/home/schmidtfa/empty_room_data/subject_subject/220721'
 
         if 'supine' in listdir(cur_empty_path)[0]:
             all_empty_room_dates = np.delete(all_empty_room_dates,
@@ -52,7 +52,7 @@ def get_nearest_empty_room(info):
 
 
 
-def raw2source(raw, subject_id, subjects_dir, preproc_settings, src_type='mne'):
+def raw2source(raw, subject_id, subjects_dir, preproc_settings, src_type='beamformer', source='surface'):
 
     # %Compute a covariance matrix
     ###### ESTIMATE NOISE COVARIANCE MATRIX
@@ -65,19 +65,26 @@ def raw2source(raw, subject_id, subjects_dir, preproc_settings, src_type='mne'):
     empty_room = preproc_data(fname_empty_room, **preproc_settings)
 
     noise_cov = mne.compute_raw_covariance(empty_room, rank=None, picks='meg', method='auto')
+    # when using noise cov rank should be based on noise cov
     true_rank = mne.compute_rank(noise_cov, info=empty_room.info)  # inferring true rank
 
     ###### MAKE FORWARD SOLUTION AND INVERSE OPERATOR
     # The files live in:
-    trans_path = '/mnt/obob/staff/fschmidt/resting_tinnitus/data/headmodels/'
-
-    fs_path = join(subjects_dir, 'fsaverage')
+    trans_path = '/home/schmidtfa/experiments/resting_tinnitus/data/headmodels/'
+    
+    fs_path = join(subjects_dir, f'{subject_id}_from_template')
+    bem_file = f'{fs_path}/bem/{subject_id}_from_template-5120-bem-sol-single-layer.fif'
+    
+    if source == 'volume':
+        src_file = f'{fs_path}/bem/{subject_id}_from_template-vol-10-src.fif'
+        
+    elif source == 'surface':
+        src_file = f'{fs_path}/bem/{subject_id}_from_template-ico-4-src.fif'
+    
     fname_trans = join(trans_path, subject_id, subject_id + '-trans.fif')
 
-    src_file = join(fs_path, 'bem', 'fsaverage-ico-4-src.fif')
-    bem_file = join(fs_path, 'bem', 'fsaverage-5120-bem-sol-single-layer.fif')
-
-    fwd = mne.make_forward_solution(info=info, trans=fname_trans, src=src_file, bem=bem_file)
+    bem_sol = mne.make_bem_solution(bem_file, solver='mne', verbose=True) 
+    fwd = mne.make_forward_solution(info=info, trans=fname_trans, src=src_file, bem=bem_sol)
 
     if src_type == 'mne':
         inv = mne.minimum_norm.make_inverse_operator(info, fwd, noise_cov, rank=true_rank, loose=0, fixed=True, depth=0.8)
@@ -104,7 +111,7 @@ def plot_parc(stc_parc, stc_mask, labels_mne,
                 subjects_dir, cmap, clevels, plot_kwargs, 
                 parc='HCPMMP1'):
 
-    mpl.use('Qt5Agg')
+    #mpl.use('Qt5Agg')
 
     labels_mne = mne.read_labels_from_annot('fsaverage', parc='HCPMMP1', subjects_dir=subjects_dir)
 

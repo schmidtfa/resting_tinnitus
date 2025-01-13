@@ -26,8 +26,8 @@ def preproc_data(cur_data,
 
     if max_filt:
         print('Running maxfilter')
-        calibration_file = '/mnt/obob/staff/fschmidt/resting_tinnitus/utils/sss_cal.dat'
-        cross_talk_file = '/mnt/obob/staff/fschmidt/resting_tinnitus/utils/ct_sparse.fif'
+        calibration_file = '/home/schmidtfa/experiments/resting_tinnitus/utils/sss_cal.dat'
+        cross_talk_file = '/home/schmidtfa/experiments/resting_tinnitus/utils/ct_sparse.fif'
 
         # find bad channels first
         noisy_chs, flat_chs = mne.preprocessing.find_bad_channels_maxwell(cur_data,

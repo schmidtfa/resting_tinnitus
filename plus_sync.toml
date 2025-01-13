@@ -1,0 +1,13 @@
+project_name = "resting_tinnitus"
+sync_folder = "data"
+subject_id_regex = "[12][0-9]{7}[a-zA-Z]{4}"
+hash_subject_ids = false
+
+
+[[SFTP]]
+name = "sinuhe"
+globs = ["*.mat", "*.fif"]
+host = "obob-bomber-fschmidt.hpc.sbg.ac.at"
+user = "b1059770"
+remote_folder = "/mnt/obob/staff/fschmidt/resting_tinnitus/base_data/"
+port = 22

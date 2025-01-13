@@ -9,6 +9,9 @@ import seaborn.objects as so
 from seaborn import plotting_context
 from seaborn import axes_style
 
+import os
+os.environ["MNE_3D_OPTION_ANTIALIAS"] = "false"
+
 # %%
 import mne
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
@@ -23,12 +26,12 @@ new_rc_params = {'text.usetex': False,
 from os.path import join
 mpl.rcParams.update(new_rc_params)
 
-local = True
+local = False
 
 if local:
     home_base = '/Users/b1059770/Library/Group Containers/G69SCX94XU.duck/Library/Application Support/duck/Volumes.noindex/bomber/resting_tinnitus'
 else:
-    home_base = '/mnt/obob/staff/fschmidt/resting_tinnitus/'
+    home_base = '/home/schmidtfa/experiments/resting_tinnitus/'
 
 #% get source space stuff
 trans_path = 'data/headmodels/'
@@ -50,49 +53,58 @@ sys.path.append(join(home_base, 'utils'))
 
 from src_utils import plot_parc
 
-data_dir = join(home_base, 'data/log_reg/')
-# %%
-
+#data_dir = join(home_base, 'data/log_reg_duration_6_new/')
+data_dir = join(home_base, 'data/log_reg_duration_6_final/')
 
 #%% get data from model
-feature_dict = {'offset': None,
-                'exponent': None,
-                #'knee_freq': None,
+kind = 'up'
+feature_dict = {'Offset': None,
+                'Exponent_1': None,
+                'Exponent_2': None,
+                'tau': None,
+                #'Knee Frequency (Hz)': None,
                 'n_peaks': None,
-                #'delta': ['cf', 'pw'],
-                'theta': ['cf', 'pw'],
-                'alpha': ['cf', 'pw'],
-                'beta': ['cf', 'pw'],
-                'gamma': ['cf', 'pw'],
+                'delta': ['pw', 'cf', 'bw'],
+                'theta': ['pw', 'cf', 'bw'],
+                
+                'beta': ['pw', 'cf', 'bw'],
+                'alpha': ['pw', 'cf', 'bw'],
                 }
 
 all_summaries = []
 for key, val in feature_dict.items():
 
     if val == None:
-        mdf = az.from_netcdf(join(data_dir, f'{key}.nc'))
-        summary = az.summary(mdf, var_names='beta|', hdi_prob=.89)
+        mdf = az.from_netcdf(join(data_dir, f'{key}_{kind}.nc'))
+        summary = az.summary(mdf, var_names='beta_ch', hdi_prob=.89)
         summary['feature'] = key
         all_summaries.append(summary)
     else:
         for cur_val in val:
-            mdf = az.from_netcdf(join(data_dir, f'{key}_{cur_val}.nc'))
-            summary = az.summary(mdf, var_names='beta|', hdi_prob=.89)
+            mdf = az.from_netcdf(join(data_dir, f'{key}_{cur_val}_{kind}.nc'))
+            summary = az.summary(mdf, var_names='beta_ch', hdi_prob=.89)
             summary['feature'] = key + '_' + cur_val
             all_summaries.append(summary)
 
-    
+
 # %%
 eff_df_cmb = pd.concat(all_summaries)
 # %%
-eff_df_cmb['positive effect'] = eff_df_cmb['hdi_5.5%'] > 0.185
-eff_df_cmb['negative effect'] = eff_df_cmb['hdi_94.5%'] < -0.185
-eff_df_cmb['null effect'] = np.logical_and(eff_df_cmb['hdi_5.5%'] > -0.185, eff_df_cmb['hdi_94.5%'] < 0.185)
+rope_lim = 0.185
+# 0.185 for rope as suggested by kruschke
+eff_df_cmb['positive effect'] = eff_df_cmb['hdi_5.5%'] > rope_lim#0.185
+eff_df_cmb['negative effect'] = eff_df_cmb['hdi_94.5%'] < -1*rope_lim#0.185
+eff_df_cmb['null effect'] = np.logical_and(eff_df_cmb['hdi_5.5%'] > -1*rope_lim,#-0.185, 
+                                           eff_df_cmb['hdi_94.5%'] < rope_lim)#0.185)
 #i might need some additional specifications for below
-eff_df_cmb['leaning positive effect'] = np.logical_and(eff_df_cmb['mean'] > 0.185, np.logical_and(eff_df_cmb['hdi_5.5%'] > 0., eff_df_cmb['hdi_5.5%'] < 0.185))
-eff_df_cmb['leaning negative effect'] = np.logical_and(eff_df_cmb['mean'] < -0.185, np.logical_and(eff_df_cmb['hdi_94.5%'] < 0., eff_df_cmb['hdi_94.5%'] > -0.185))
+eff_df_cmb['leaning positive effect'] = np.logical_and(eff_df_cmb['mean'] > rope_lim,#0.185, 
+                                                       np.logical_and(eff_df_cmb['hdi_5.5%'] > 0., 
+                                                                      eff_df_cmb['hdi_5.5%'] < rope_lim))#0.185))
+eff_df_cmb['leaning negative effect'] = np.logical_and(eff_df_cmb['mean'] < -1*rope_lim,#-0.185, 
+                                                       np.logical_and(eff_df_cmb['hdi_94.5%'] < 0., 
+                                                                      eff_df_cmb['hdi_94.5%'] > -1*rope_lim))#-0.185))
 #eff_df_cmb['undefined'] = eff_df_cmb[['positive effect', 'negative effect', 'null effect', 'leaning positive effect', 'leaning negative effect']].sum(axis=1) == 0
-
+eff_df_cmb.to_csv(f'../results/hist_log_reg_effects_{kind}.csv')
 
 # %%
 #'undefined'
@@ -105,20 +117,22 @@ eff_list = (eff_df_cmb[['feature', 'positive effect', 'leaning positive effect',
 
 eff_list['Observed Effects (%)'] *= 100 
 
-eff_list.replace({'feature' : {#'delta_cf': 'Delta (cf)', 
-                               #'delta_pw': 'Delta (pw)', 
+eff_list.replace({'feature' : {'delta_cf': 'Delta (cf)', 
+                               'delta_pw': 'Delta (pw)', 
+                               'delta_bw': 'Delta (bw)', 
                                'theta_cf': 'Theta (cf)', 
                                'theta_pw': 'Theta (pw)', 
+                               'theta_bw': 'Theta (bw)', 
                                'alpha_cf': 'Alpha (cf)', 
                                'alpha_pw': 'Alpha (pw)', 
+                               'alpha_bw': 'Alpha (bw)', 
                                'beta_cf': 'Beta (cf)', 
                                'beta_pw': 'Beta (pw)',
-                               'gamma_cf': 'Gamma (cf)',
-                               'gamma_pw': 'Gamma (pw)',
+                               'beta_bw': 'Beta (bw)',
                                'n_peaks': '#Peaks',
-                               'exponent': 'Exponent',
-                               'offset': 'Offset',
-                               #'knee_freq': 'Knee Frequency (Hz)',
+                               'Exponent_1': 'Exponent1',
+                               'Exponent_2': 'Exponent2',
+                               'Offset': 'Offset',
                                }}, inplace=True)
 # %%
 eff_probas = eff_list.groupby(['Effect', 'feature']).mean().reset_index()#'feature')
@@ -132,38 +146,45 @@ cmap = [pal[3], pal2[3], pal[0], pal2[0], pal[2]]
 
 c_order = [ 'positive effect', 'leaning positive effect', 'negative effect','leaning negative effect','null effect',]
 
-label_order = [#'Delta (cf)', 'Delta (pw)', 
-           'Theta (cf)', 'Theta (pw)', 
-           'Alpha (cf)', 'Alpha (pw)',
-           'Beta (cf)', 'Beta (pw)',
-           'Gamma (cf)', 'Gamma (pw)',
-           '#Peaks', 'Exponent', 'Offset', 
-           #'Knee Frequency (Hz)'
+label_order = ['Delta (cf)', 
+            'Delta (pw)', 
+            'Delta (bw)', 
+           'Theta (cf)', 
+           'Theta (pw)', 
+           'Theta (bw)', 
+           'Alpha (cf)', 
+           'Alpha (pw)',
+           'Alpha (bw)',
+           'Beta (cf)', 
+           'Beta (pw)',
+           'Beta (bw)',
+           '#Peaks', 'Exponent1', 
+           'Exponent2', 'tau', 'Offset', 
            ]
 
-f, ax = plt.subplots(figsize=(8, 4))
-p = (so.Plot(data=eff_probas, 
-            x="feature", 
-            y='Observed Effects (%)', 
-            color="Effect",
-            ymin=0,
-            ymax=100)        
-        #.theme(axes_style("ticks") | plotting_context("talk"))
-        #.layout(size=(8,4))
-        .add(so.Bar(), 
-             so.Stack())
-        .scale(x=so.Nominal(order=label_order),
-               color=so.Nominal(order=c_order, values=cmap),
-               )
-        .label(x="", color="")
-        )#.plot(pyplot=True)
+# f, ax = plt.subplots(figsize=(8, 4))
+# p = (so.Plot(data=eff_probas, 
+#             x="feature", 
+#             y='Observed Effects (%)', 
+#             color="Effect",
+#             ymin=0,
+#             ymax=100)        
+#         #.theme(axes_style("ticks") | plotting_context("talk"))
+#         #.layout(size=(8,4))
+#         .add(so.Bar(), 
+#              so.Stack())
+#         .scale(x=so.Nominal(order=label_order),
+#                color=so.Nominal(order=c_order, values=cmap),
+#                )
+#         .label(x="", color="")
+#         )#.plot(pyplot=True)
 
 
-sns.despine()
-ax.set_xticklabels(label_order, rotation = 90)
-p.on(ax).show()
-#p
-#p.show()
+# sns.despine()
+# ax.set_xticklabels(label_order, rotation = 90)
+# p.on(ax).show()
+# #p
+# #p.show()
 #p.set_xticklabels(p.get_xticks(), rotation = 90)
 
 #p#.show()
@@ -178,7 +199,7 @@ eff_pivot.sort_values('feature', inplace=True)
 
 
 #%%
-%matplotlib inline
+#%matplotlib inline
 cmap = [pal[2], pal2[0], pal[0],pal2[3], pal[3]]
 
 f, ax = plt.subplots(figsize=(12, 4))
@@ -194,10 +215,10 @@ ax.set_xlabel('')
 ax.set_ylabel('Observed Effect (%)')
 sns.despine()
 
-f.savefig('../results/hist_log_reg_effects.svg')
+f.savefig(f'../results/hist_log_reg_effects_{kind}.eps', format='eps', bbox_inches='tight', transparent=True)
 
 #%% now lets plot everything on a brain
-
+#%matplotlib inline
 ch_effects = (eff_df_cmb.reset_index()[['index', 'positive effect', 'negative effect', 'leaning positive effect', 'leaning negative effect']]
            .groupby('index')
            .mean()
@@ -216,20 +237,23 @@ reindex_array = [np.argmax(eff == names_order_mne[2:]) for eff in ch_effects['ch
 
 # %%
 cur_param = "Effect"
-view = "lateral" # lateral
+view = "lateral" # lateral, "medial"
+mne.viz.set_3d_backend('notebook')
 
 df2plot = ch_effects#[reindex_array]
 
 plot_kwargs = {
     'hemi':"split",
     'surf':"inflated",
-    'views':[view,], # "medial"
+    'views':[view,], # 
     'subjects_dir':subjects_dir,
     'cortex':[(.6,.6,.6), (.6,.6,.6)], #turn sulci and gyri to the same grey
     'background':'white',
     #'show_toolbar':False, 
-    'offscreen':True,
+    #'offscreen':True,
     'size':(800, 400),
+    #'block': True,
+    'show':False
 }
 
 stc_parc = np.concatenate([[0,0], df2plot[cur_param]])
@@ -265,7 +289,7 @@ fig.tight_layout()
 fig.savefig(f'../results/brain_log_{cur_param}_tinnitus_{view}_almost.svg')
 
 # %%
-ch_effects[ch_effects['Effect'] > 0.10]
+ch_effects[ch_effects['Effect'] > 0.185]
 # %%
 ch_effects
 # %%

@@ -18,24 +18,34 @@ class BART(Job):
             ):
 
         #%%
-        df_cmb = pd.read_csv('/mnt/obob/staff/fschmidt/resting_tinnitus/data/tinnitus_all_spec_features.csv')
+        df_ap = pd.read_csv('/home/schmidtfa/experiments/resting_tinnitus/data/aperiodic_params.csv')
+        df_pe = pd.read_csv('/home/schmidtfa/experiments/resting_tinnitus/data/periodic_params.csv')
 
+        df_cmb = df_ap.merge(df_pe, on=['ch_name', 'subject_id', 'tinnitus','dB', 'age', 'tinnitus_distress'])
         #% debug
-        # all_chs = df_cmb['ch_name'].unique()
-        # cur_ch = all_chs[0]
-        # n_trees=20
-        # n_splits=5
+        all_chs = df_cmb['ch_name'].unique()
+        cur_ch = all_chs[0]
+        n_trees=20
+        n_splits=5
+
+        df_cmb['old'] = df_cmb['age'] > 50 #median age is 60
+        cur_ch_df = df_cmb.query(f'ch_name == "{cur_ch}"').reset_index()
+        cur_ch_df.drop_duplicates(subset='subject_id', inplace=True)
 
         cur_ch_df = df_cmb.query(f'ch_name == "{cur_ch}"').reset_index()
 
-        predictors = ['offset', 
-                    'exponent', 
-                    'n_peaks', 
-                    'theta_cf', 'theta_pw',
-                    'alpha_cf', 'alpha_pw', #'alpha_bw',
-                    'beta_cf', 'beta_pw',# 'beta_bw',
-                    'gamma_cf', 'gamma_pw',#'gamma_bw', 
-                    #'ch_name'
+        predictors = ['Offset', 
+                      'Exponent_1',  
+                      'Exponent_2',  
+                 #     'Knee Frequency (Hz)', 
+                      'tau',                  
+                #      'n_peaks', 
+                #      'delta_cf', 'delta_pw',#'theta_bw',
+                #      'theta_cf', 'theta_pw',#'theta_bw',
+                #       #'alpha_osc',
+                       'alpha_cf', 'alpha_pw', #'alpha_bw',
+                #       #'beta_osc', 
+                #       'beta_cf', 'beta_pw', #'beta_bw', 
                     ]
 
         y = cur_ch_df['tinnitus']
@@ -43,8 +53,8 @@ class BART(Job):
 
         #%%
         sample_kwargs = {
-                        'draws': 5000,
-                        'tune': 5000,
+                        'draws': 1000,
+                        'tune': 1000,
                         'chains': 4,
                         'idata_kwargs' : {'log_likelihood': True}, 
                         }
@@ -64,8 +74,8 @@ class BART(Job):
                 model.add_coord('id', cur_train_x.index, mutable=True)
                 model.add_coord('feature', cur_train_x.columns, mutable=True)
                 
-                X_s = pm.MutableData('X_s', cur_train_x, dims=('id', 'feature'))
-                y_s = pm.MutableData("y_s", cur_train_y, dims='id')
+                X_s = pm.Data('X_s', cur_train_x, dims=('id', 'feature'))
+                y_s = pm.Data("y_s", cur_train_y, dims='id')
                 
                 # model definiton
                 mu = pmb.BART("mu", X=X_s, Y=cur_train_y, m=n_trees, dims='id')
@@ -87,7 +97,7 @@ class BART(Job):
                 
             #add test data for post-hoc comparison
             idata.observed_data['y_test_set'] = cur_test_y
-            outdir = f'/mnt/obob/staff/fschmidt/resting_tinnitus/data/bart/n_trees_{n_trees}'
+            outdir = f'/home/schmidtfa/experiments/resting_tinnitus/data/bart/n_trees_{n_trees}'
 
             if not isdir(outdir):
                 os.makedirs(outdir)

@@ -12,7 +12,7 @@ import pymc as pm
 import numpy as np
 
 # %%
-INDIR = '/mnt/obob/staff/fschmidt/resting_tinnitus/data/ada_boost/'
+INDIR = '/home/schmidtfa/experiments/resting_tinnitus/data/random_forest/'
 # %%
 acc_list, importance_list, settings_list = [], [], []
 
@@ -21,7 +21,7 @@ for f in listdir(INDIR):
     cur_data = joblib.load(join(INDIR, f))
 
     acc_list.append(cur_data['acc'])
-    #importance_list.append(cur_data['importance_rf'])
+    importance_list.append(cur_data['importance_rf'])
     settings_list.append(cur_data['settings'])
 # %%
 df_acc = pd.concat(acc_list)
@@ -65,6 +65,9 @@ with md:
 summary = az.summary(idata, var_names='a|', filter_vars='like')
 
 #%%
+plt.hist(summary['mean'])
+
+#%%
 az.plot_trace(idata)
 
 #%%
@@ -79,9 +82,6 @@ az.plot_ppc(idata)
 good_chs = list(df_acc.groupby('ch_name').mean()[pd.concat(acc_list).groupby('ch_name').mean()['accuracy (%)'] > 55].index)
 
 good_chs
-#%%
-print(df_acc.mean())
-print(df_acc.std())
 
 #%%
 df_acc.groupby('ch_name').median().hist()
@@ -94,7 +94,7 @@ g = sns.catplot(df_acc, x='ch_name', y='accuracy (%)', kind='point')
 g.set_xlabels('')
 g.ax.set_xticks([])
 #%%
-stats.pearsonr(pd.concat(acc_list).groupby('ch_name').median()['accuracy (%)'], 
+stats.pearsonr(pd.concat(acc_list).groupby('ch_name').mean()['accuracy (%)'], 
                pd.concat(acc_list).groupby('ch_name').std()['accuracy (%)'])
 
 #%%
@@ -105,7 +105,7 @@ ax.set_ylabel('Mean Accuracy (%)')
 # %%
 df_importance = pd.concat(importance_list)#.groupby(['ch_name', 'feature']).mean()#.hist()
 # %%
-#df_importance.mean().sort_values(ascending=False)
+df_importance[['feature', 'importance_rf']].mean().sort_values(ascending=False)
 
 # %%
 df_importance.groupby('feature').mean().sort_values('importance_rf', ascending=False)
@@ -115,4 +115,6 @@ df_settings = pd.concat(settings_list)
 # %%
 plt.hist(df_settings['n_estimators'])
 
+# %%
+plt.hist(df_settings['min_samples_leaf'])
 # %%

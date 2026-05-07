@@ -162,7 +162,7 @@ class HeadModelJob(Job):
 # %% UNCOMMENT FOR TESTING
 if __name__ == '__main__':
 
-    subject_id = '19670901igsr'
+    subject_id = 'XXXXX'
 
     job = HeadModelJob(subject_id=subject_id)
     job.run_private()

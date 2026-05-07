@@ -22,16 +22,18 @@ subject_ids = df_all['subject_id'].unique()
 
 #%%
 #INDIR = '/home/schmidtfa/experiments/resting_tinnitus/data/pyrasa_peak_params'
-INDIR = '/home/schmidtfa/experiments/resting_tinnitus/data/pyrasa_peak_params_duration_6'
+INDIR = '/home/schmidtfa/experiments/resting_tinnitus/data/pyrasa_peak_params_duration_6_final_default'
 
 ctx_periodic, peak_list = [], []
 delta, theta, alpha, beta = [], [], [], []
 bad_subjects = []
 
+thresh = 2.0
+
 for subject_id in subject_ids:
 
     try:
-        cur_data = joblib.load(str(list(Path(INDIR).glob(f'{subject_id}/{subject_id}.dat'))[0]))
+        cur_data = joblib.load(str(list(Path(INDIR).glob(f'{subject_id}/{subject_id}__peak_threshold_{thresh}.dat'))[0]))
 
         ctx_periodic.append(cur_data['peaks'].query('cf < 46'))
         peak_list.append(cur_data['df_peaks'])
@@ -52,17 +54,18 @@ df_ctx = pd.concat(ctx_periodic)
 no_tinn = df_ctx.query('tinnitus == False')
 
 f, ax = plt.subplots(figsize=(10, 5))
-ax.hist(no_tinn['cf'], bins=40)
-ax.set_xlim(0, 40)
+sns.histplot(df_ctx, x='cf', hue='tinnitus', #bins=100, 
+            palette='deep')
+ax.set_xlim(1, 40)
 ax.set_xlabel('Frequency (Hz)')
 ax.set_ylabel('N peaks')
 sns.despine()
-f.savefig('../results/all_peaks_hist_no_tinn.svg')
+f.savefig('../results/all_peaks_hist_tinn_no_tinn.svg')
 
 #%%
 f, ax = plt.subplots(figsize=(5, 5))
 ax.hist(no_tinn['cf'], bins=40)
-ax.set_xlim(0, 40)
+ax.set_xlim(1, 40)
 ax.set_xlabel('Frequency (Hz)')
 ax.set_ylabel('N peaks')
 sns.despine()
@@ -90,9 +93,9 @@ def merge_oscillatory_data(label_list, data_list):
                 new_cf_vector.append(cur['cf'])
 
         df_cur_freq[freq_label + '_osc'] = np.isnan(df_cur_freq['cf']) == False
-        df_cur_freq['cf'] = np.array(new_cf_vector)
-        df_cur_freq['pw'] = df_cur_freq['pw'].fillna(0)
-        df_cur_freq['bw'] = df_cur_freq['bw'].fillna(0)
+        #df_cur_freq['cf'] = df_cur_freq#np.array(new_cf_vector)
+        #df_cur_freq['pw'] = df_cur_freq['pw'].fillna(0)
+        #df_cur_freq['bw'] = df_cur_freq['bw'].fillna(0)
 
         df_cur_freq.rename(columns={'cf': freq_label + '_cf',
                                     'pw': freq_label + '_pw',
@@ -112,45 +115,56 @@ df_ctx = merge_oscillatory_data(label_list, data_list).query('ch_name != "???"')
 df_peaks = pd.concat(peak_list).query('ch_name != "???"')
 df_periodic = df_ctx.merge(df_peaks, on=['ch_name', 'subject_id', 'tinnitus','dB', 'age', 'tinnitus_distress'])
 
-#%%
-df_periodic.to_csv('../data/periodic_params.csv')
-#%%
+#%
+df_periodic.to_csv(f'../data/periodic_params__peak_threshold_{thresh}.csv')
+#%
 
-param = 'theta_pw'
+# param = 'theta_cf'
 
-f, ax = plt.subplots(figsize=(5, 75))
-sns.pointplot(df_periodic, x=param, y='ch_name', hue='tinnitus', ax=ax)
-#%%
+# f, ax = plt.subplots(figsize=(5, 75))
+# sns.pointplot(df_periodic, x=param, y='ch_name', hue='tinnitus', ax=ax)
+#%
 
-med_age = np.median(df_ctx.drop_duplicates(subset='subject_id')['age'])
-df_ctx_o = df_ctx.query('age > 50')
-#%%
+# med_age = np.median(df_ctx.drop_duplicates(subset='subject_id')['age'])
+# df_ctx_o = df_ctx.query('age > 50')
+#%
 
-f, ax = plt.subplots(figsize=(5, 75))
-sns.pointplot(data=df_peaks, y='ch_name', x='n_peaks', hue='tinnitus', ax=ax)
+# f, ax = plt.subplots(figsize=(5, 75))
+# sns.pointplot(data=df_peaks, y='ch_name', x='n_peaks', hue='tinnitus', ax=ax)
 
 #%%
 data2corr = df_periodic.groupby('ch_name')[['alpha_cf', 'age']].corr()
 cur_corr = data2corr['age'].copy().reset_index().query(f'level_1 == "alpha_cf"')
 plt.hist(cur_corr['age'])
 
-# %%
-sns.set_context('paper')
-f, ax = plt.subplots(figsize=(5, 75))
-sns.pointplot(data=df_ctx_o, y='ch_name', x='alpha_cf', hue='tinnitus', ax=ax)
+#%%
+data2corr = df_periodic.query('tinnitus == True').groupby('ch_name')[['alpha_cf', 'age']].corr()
+cur_corr_t = data2corr['age'].copy().reset_index().query(f'level_1 == "alpha_cf"')
+plt.hist(cur_corr_t['age'])
+
+
+#%%
+data2corr = df_periodic.query('tinnitus == False').groupby('ch_name')[['alpha_cf', 'age']].corr()
+cur_corr_nt = data2corr['age'].copy().reset_index().query(f'level_1 == "alpha_cf"')
+plt.hist(cur_corr_nt['age'])
+
+# %
+# sns.set_context('paper')
+# f, ax = plt.subplots(figsize=(5, 75))
+# sns.pointplot(data=df_ctx_o, y='ch_name', x='alpha_cf', hue='tinnitus', ax=ax)
+
+#%%
+(cur_corr_t < cur_corr_nt).mean()
+
 
 # %%
 key = 'alpha_pw'
 data2corr = df_ctx.groupby('ch_name')[[key, 'age']].corr()
-# %%
-data2corr
-# %%
-
 cur_corr = data2corr['age'].copy().reset_index().query(f'level_1 == "{key}"')
-# %%
-f, ax = plt.subplots(figsize=(5, 75))
-sns.pointplot(data=cur_corr, y='ch_name', x='age', ax=ax)
-
-# %%
 plt.hist(cur_corr['age'])
+
+# # %%
+# f, ax = plt.subplots(figsize=(5, 75))
+# sns.pointplot(data=cur_corr, y='ch_name', x='age', ax=ax)
+
 # %%
